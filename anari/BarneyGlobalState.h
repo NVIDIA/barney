@@ -9,6 +9,7 @@
 #include "helium/BaseGlobalDeviceState.h"
 #include <memory>
 #include <map>
+#include <unordered_map>
 
 namespace barney_device {
 
@@ -70,6 +71,20 @@ namespace barney_device {
     } objectUpdates;
 
     int slot = -1;
+
+    // Maps data rank IDs to context slot indices when multi-slot mode is active.
+    // Populated during context creation when dataGroupIDs are provided.
+    std::unordered_map<int, int> dataRankToSlot;
+
+    int resolveSlot(int dataRank) const
+    {
+      if (dataRank >= 0 && !dataRankToSlot.empty()) {
+        auto it = dataRankToSlot.find(dataRank);
+        if (it != dataRankToSlot.end())
+          return it->second;
+      }
+      return slot;
+    }
 
     std::shared_ptr<Tether> tether;
 

@@ -20,7 +20,10 @@ namespace barney_device {
     void commitParameters() override;
     void markFinalized() override;
 
-    BNGroup makeBarneyGroup() const;
+    BNGroup makeBarneyGroup(int slot = -1) const;
+
+    int resolvedSlot() const;
+    bool hasLights() const;
 
     box3 bounds() const;
 

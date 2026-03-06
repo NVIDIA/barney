@@ -30,9 +30,30 @@ namespace barney_device {
     Object::markFinalized();
   }
 
-  BNGroup Group::makeBarneyGroup() const
+  int Group::resolvedSlot() const
   {
-    int slot = deviceState()->slot;
+    if (m_volumeData) {
+      for (auto it = m_volumeData->handlesBegin(); it != m_volumeData->handlesEnd(); ++it) {
+        auto *v = (Volume *)*it;
+        if (!v || !v->isValid()) continue;
+        auto *field = v->field();
+        if (!field) continue;
+        int dr = field->getParam<int>("dataRank", -1);
+        int s = deviceState()->resolveSlot(dr);
+        if (s >= 0) return s;
+      }
+    }
+    return deviceState()->slot;
+  }
+
+  bool Group::hasLights() const
+  {
+    return m_lightData && m_lightData->size() > 0;
+  }
+
+  BNGroup Group::makeBarneyGroup(int slot) const
+  {
+    if (slot < 0) slot = deviceState()->slot;
     auto context = deviceState()->tether->context;
 
     std::vector<BNGeom> barneyGeometries;
@@ -112,10 +133,8 @@ namespace barney_device {
     BNData lightsData = nullptr;
     if (!barneyLights.empty()) {
       lightsData = bnDataCreate(context, slot, BN_OBJECT,
-                                barneyLights.size(), barneyLights.data());
+                                (int)barneyLights.size(), barneyLights.data());
     }
-
-    // Make barney group //
 
     BNGroup bg = bnGroupCreate(context,slot,
                                barneyGeometries.data(),

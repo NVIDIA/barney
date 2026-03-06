@@ -146,81 +146,104 @@ namespace barney_device {
     reportMessage(ANARI_SEVERITY_DEBUG, "barney::World rebuilding model");
 
     auto barneyModel = tetheredModel->model;
+    auto context = state->tether->context;
+    int defaultSlot = state->slot;
 
-    int  slot    = deviceState()->slot;
-    auto context = deviceState()->tether->context;
+    // Collect all known slot indices so even empty ones get bnSetInstances
+    std::set<int> allSlots;
+    allSlots.insert(defaultSlot);
+    for (auto &kv : state->dataRankToSlot)
+      allSlots.insert(kv.second);
 
-    std::vector<const Group *> groups;
-    std::vector<BNGroup>       barneyGroups;
-    std::vector<BNTransform>   barneyTransforms;
+    struct SlotData {
+      std::vector<BNGroup>       barneyGroups;
+      std::vector<BNTransform>   barneyTransforms;
+      std::vector<int>           instIDs;
+      std::vector<math::float4>  attributes[Instance::Attributes::count];
+    };
+    std::map<int, SlotData> perSlot;
+    for (int s : allSlots)
+      perSlot[s];
 
-    groups.reserve(m_instances.size());
-    barneyGroups.reserve(m_instances.size());
-    barneyTransforms.reserve(m_instances.size());
+    // Cache: (anariGroup, slot) -> BNGroup
+    std::map<std::pair<const Group*, int>, BNGroup> barneyGroupCache;
 
-    /*! arrays for the attributes - by default these are empty, they get
-      created/filled on demand if/when we find instance(s) that have
-      them */
-    std::map<const Group*,BNGroup> barneyGroupForAnariGroup;
-    std::vector<math::float4> attributes[Instance::Attributes::count];
-    std::vector<int> instIDs;
+    auto addInstToSlot = [&](Instance *inst, const Group *ag, int slot) {
+      auto key = std::make_pair(ag, slot);
+      BNGroup bg = 0;
+      auto it = barneyGroupCache.find(key);
+      if (it == barneyGroupCache.end()) {
+        bg = ag->makeBarneyGroup(slot);
+        barneyGroupCache[key] = bg;
+      } else {
+        bg = it->second;
+      }
+      if (!bg) return;
+
+      auto &sd = perSlot[slot];
+      BNTransform bt;
+      sd.instIDs.push_back(inst->m_id);
+      inst->writeTransform(&bt);
+      sd.barneyTransforms.push_back(bt);
+      sd.barneyGroups.push_back(bg);
+      if (inst->attributes)
+        for (int i = 0; i < Instance::Attributes::count; i++) {
+          if (isnan(inst->attributes->values[i].x)) continue;
+          while (sd.attributes[i].size() < sd.barneyTransforms.size())
+            sd.attributes[i].push_back(math::float4(NAN));
+          sd.attributes[i].back() = inst->attributes->values[i];
+        }
+    };
+
     for (auto inst : m_instances) {
       if (!inst) continue;
       const Group *ag = inst->group();
       if (!ag) continue;
-      BNGroup bg = 0;
-      if (barneyGroupForAnariGroup.find(ag) == barneyGroupForAnariGroup.end())
-        barneyGroupForAnariGroup[ag] = bg = ag->makeBarneyGroup();
-      else
-        bg = barneyGroupForAnariGroup[ag];
-      if (!bg) continue;
 
-      BNTransform bt;
-      instIDs.push_back(inst->m_id);
-      inst->writeTransform(&bt);
-      barneyTransforms.push_back(bt);
-      barneyGroups.push_back(bg);
-      if (inst->attributes)
-        for (int i=0;i<Instance::Attributes::count;i++) {
-          if (isnan(inst->attributes->values[i].x)) continue;
+      int slot = ag->resolvedSlot();
 
-          while (attributes[i].size() < barneyTransforms.size())
-            attributes[i].push_back(math::float4(NAN));
-          attributes[i].back() = inst->attributes->values[i];
-        }
+      if (ag->hasLights()) {
+        for (int s : allSlots)
+          addInstToSlot(inst, ag, s);
+      } else {
+        addInstToSlot(inst, ag, slot);
+      }
     }
 
     assert(barneyModel);
-    bnSetInstances(barneyModel,
-                   slot,
-                   barneyGroups.data(),
-                   barneyTransforms.data(),
-                   (int)barneyGroups.size());
 
-    for (int i=0;i<Instance::Attributes::count;i++) {
-      if (m_attributesData[i]) {
-        // one way or another, release existing attribute - either it
-        // doesn't exist any more (->free) or it might have changed size
-        // (-> need realloc anyway)
-        bnRelease(m_attributesData[i]);
-        m_attributesData[i] = 0;
+    // Release old per-slot attribute data
+    for (auto &[s, attribs] : m_perSlotAttribs)
+      for (auto &d : attribs)
+        if (d) { bnRelease(d); d = 0; }
+    m_perSlotAttribs.clear();
+
+    for (auto &[slot, sd] : perSlot) {
+      bnSetInstances(barneyModel, slot,
+                     sd.barneyGroups.data(),
+                     sd.barneyTransforms.data(),
+                     (int)sd.barneyGroups.size());
+
+      auto &attribs = m_perSlotAttribs[slot];
+      attribs.fill(0);
+      for (int i = 0; i < Instance::Attributes::count; i++) {
+        attribs[i] = bnDataCreate(context, slot, BN_FLOAT4,
+                                  sd.attributes[i].size(),
+                                  sd.attributes[i].data());
+        std::string attribName = std::string("attribute") + std::to_string(i);
+        bnSetInstanceAttributes(barneyModel, slot,
+                                attribName.c_str(), attribs[i]);
       }
 
-      m_attributesData[i]
-        = bnDataCreate(context,slot,BN_FLOAT4,
-                       attributes[i].size(),attributes[i].data());
-    }
-    for (int i=0;i<Instance::Attributes::count;i++) {
-      std::string attribName = std::string("attribute")+std::to_string(i);
-      bnSetInstanceAttributes(barneyModel,slot,
-                              attribName.c_str(),
-                              m_attributesData[i]);
+      bnBuild(barneyModel, slot);
+
+      reportMessage(ANARI_SEVERITY_DEBUG,
+                    "barney::World built slot %d with %d instances",
+                    slot, (int)sd.barneyGroups.size());
     }
 
-    bnBuild(barneyModel, slot);
-
-    for (auto it : barneyGroupForAnariGroup)
-      bnRelease(it.second);
+    for (auto &[key, bg] : barneyGroupCache)
+      bnRelease(bg);
 
     m_lastBarneyModelBuild = helium::newTimeStamp();
   }

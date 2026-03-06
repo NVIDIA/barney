@@ -20,6 +20,7 @@ namespace barney_device {
     void markFinalized() override;
 
     BNVolume getBarneyVolume();
+    virtual SpatialField *field() const { return nullptr; }
 
     virtual box3 bounds() const = 0;
     void commitParameters() override;
@@ -47,6 +48,7 @@ namespace barney_device {
     bool isValid() const override;
 
     BNVolume createBarneyVolume() override;
+    SpatialField *field() const override { return m_field.get(); }
 
     box3 bounds() const override;
 

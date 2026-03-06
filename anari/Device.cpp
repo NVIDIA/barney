@@ -348,29 +348,55 @@ namespace barney_device {
       std::vector<int> gpuIDs;
       int *_gpuIDs   = nullptr;
       int  _gpuCount = -1;
-      if (state->tether->devices[0]->m_cudaDevice >= 0) {
-        for (auto dev : state->tether->devices) {
-          assert(dev->m_cudaDevice >= 0);
-          gpuIDs.push_back(dev->m_cudaDevice);
+      std::vector<int> dgIDs;
+
+      // Multi-slot mode: dataGroupIDs and cudaDevices were provided as
+      // numbered device parameters (numDataGroups, dataGroupID0..N, etc.)
+      bool multiSlot = !m_multiDataGroupIDs.empty();
+      if (multiSlot) {
+        dgIDs = m_multiDataGroupIDs;
+        for (int gpu : m_multiCudaDevices) {
+          if (gpu >= 0)
+            gpuIDs.push_back(gpu);
         }
-        _gpuIDs = gpuIDs.data();
-        _gpuCount = (int)gpuIDs.size();
+        if (!gpuIDs.empty()) {
+          _gpuIDs = gpuIDs.data();
+          _gpuCount = (int)gpuIDs.size();
+        }
+
+        // Build the dataRank → slot index mapping
+        for (int i = 0; i < (int)dgIDs.size(); i++)
+          state->dataRankToSlot[dgIDs[i]] = i;
+
+        reportMessage(ANARI_SEVERITY_DEBUG,
+                      "multi-slot context: %d data groups, %d explicit GPUs",
+                      (int)dgIDs.size(), (int)gpuIDs.size());
       } else {
-        // for MPI mode, for now let's set num GPUs to one because
-        // that's what data parallel will almost certainly want.
-        if (m_cudaDevice >= 0)
-          _gpuIDs = &m_cudaDevice;
-        _gpuCount = 1;
+        // Original tether-based path
+        if (state->tether->devices[0]->m_cudaDevice >= 0) {
+          for (auto dev : state->tether->devices) {
+            assert(dev->m_cudaDevice >= 0);
+            gpuIDs.push_back(dev->m_cudaDevice);
+          }
+          _gpuIDs = gpuIDs.data();
+          _gpuCount = (int)gpuIDs.size();
+        } else {
+          if (m_cudaDevice != -2) {
+            _gpuIDs = &m_cudaDevice;
+            _gpuCount = 1;
+          }
+          // m_cudaDevice == -2 (default): leave _gpuCount = -1 so barney
+          // auto-detects all available GPUs via cudaGetDeviceCount().
+        }
+
+        for (auto dev : state->tether->devices) {
+          int dgID = dev->m_dataGroupID;
+          if (dgID == -1)
+            dgID = rank * state->tether->devices.size() + dev->tetherIndex;
+          dgIDs.push_back(dgID);
+        }
       }
 
-      std::vector<int> dgIDs;
-      for (auto dev : state->tether->devices) {
-        int dgID = dev->m_dataGroupID;
-        if (dgID == -1)
-          // not set by user, use default of different data group ID per device
-          dgID = rank * state->tether->devices.size() + dev->tetherIndex;
-        dgIDs.push_back(dgID);
-      }
       int *_dgIDs   = dgIDs.data();
       int  _dgCount = (int)dgIDs.size();
 
@@ -420,6 +446,20 @@ namespace barney_device {
     }
     m_cudaDevice = getParam<int>("cudaDevice", m_cudaDevice);
     m_dataGroupID = getParam<int>("dataGroupID", m_dataGroupID);
+
+    int numDG = getParam<int>("numDataGroups", 0);
+    if (numDG > 0) {
+      m_multiDataGroupIDs.resize(numDG);
+      m_multiCudaDevices.resize(numDG);
+      for (int i = 0; i < numDG; i++) {
+        std::string dgKey = "dataGroupID" + std::to_string(i);
+        std::string gpuKey = "cudaDevice" + std::to_string(i);
+        m_multiDataGroupIDs[i] = getParam<int>(dgKey.c_str(), i);
+        m_multiCudaDevices[i] = getParam<int>(gpuKey.c_str(), -2);
+      }
+      reportMessage(ANARI_SEVERITY_DEBUG,
+                    "multi-slot config: %d data groups", numDG);
+    }
 #if BARNEY_MPI
     uint64_t pointerToComm = getParam<uint64_t>("pointer_to_mpi_communicator", 0ull);
     if (pointerToComm) {

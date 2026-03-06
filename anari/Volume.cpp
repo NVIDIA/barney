@@ -152,7 +152,10 @@ namespace barney_device {
 
   BNVolume TransferFunction1D::createBarneyVolume()
   {
-    int slot = deviceState()->slot;
+    // Inherit slot from the field's dataRank so the volume and its
+    // scalar field live on the same Barney data partition.
+    int dataRank = m_field ? m_field->getParam<int>("dataRank", -1) : -1;
+    int slot = deviceState()->resolveSlot(dataRank);
     auto context = deviceState()->tether->context;
 
     return m_field

@@ -6,6 +6,8 @@
 
 #include "Array.h"
 #include "Instance.h"
+#include <array>
+#include <map>
 
 namespace barney_device {
 
@@ -43,7 +45,8 @@ namespace barney_device {
     // int uniqueID = -1;
     TetheredModel::SP tetheredModel;
 
-    BNData m_attributesData[Instance::Attributes::count] = {0,0,0,0,0};
+    using AttribArray = std::array<BNData, Instance::Attributes::count>;
+    std::map<int, AttribArray> m_perSlotAttribs;
     helium::TimeStamp m_lastBarneyModelBuild{0};
   };
 

@@ -94,7 +94,7 @@ namespace barney_device {
     // get (or create) and populate bn field
     //=======================================================
 
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = getBarneyScalarField();
@@ -146,7 +146,7 @@ namespace barney_device {
     if (!isValid())
       return {};
 
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = bnScalarFieldCreate(context, slot, "structured");
@@ -216,7 +216,7 @@ namespace barney_device {
     //=======================================================
     // get (or create) and populate bn field
     //=======================================================
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
     
     BNScalarField sf = getBarneyScalarField();
@@ -232,7 +232,7 @@ namespace barney_device {
 
   BNScalarField NanoVDBSpatialField::createBarneyScalarField() const
   {
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = bnScalarFieldCreate(context, slot, "NanoVDB");
@@ -369,7 +369,7 @@ namespace barney_device {
     // get (or create) and populate bn field
     //=======================================================
 
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = getBarneyScalarField();
@@ -434,7 +434,7 @@ namespace barney_device {
 
   BNScalarField UnstructuredField::createBarneyScalarField() const
   {
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = bnScalarFieldCreate(context, slot, "unstructured");
@@ -532,7 +532,7 @@ namespace barney_device {
     // get (or create) and populate bn field
     //=======================================================
 
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = getBarneyScalarField();
@@ -605,7 +605,7 @@ namespace barney_device {
       << "=================================================================="
       << std::endl;
 
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
 
     BNScalarField sf = bnScalarFieldCreate(context, slot, "BlockStructuredAMR");
@@ -660,7 +660,7 @@ namespace barney_device {
         return;
     }
     
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
     
     // Iterate over all parameters and forward them to Barney
@@ -758,6 +758,11 @@ namespace barney_device {
             bnSet3f(m_bnField, paramName.c_str(), val.x, val.y, val.z);
             break;
           }
+          case ANARI_FLOAT32_VEC4: {
+            auto val = getParam<math::float4>(paramName, math::float4(0.0f));
+            bnSet4f(m_bnField, paramName.c_str(), val.x, val.y, val.z, val.w);
+            break;
+          }
           case ANARI_INT32:
             bnSet1i(m_bnField, paramName.c_str(), getParam<int>(paramName, 0));
             break;
@@ -779,7 +784,7 @@ namespace barney_device {
 
   BNScalarField CustomSpatialField::createBarneyScalarField() const
   {
-    int slot = deviceState()->slot;
+    int slot = deviceState()->resolveSlot(getParam<int>("dataRank", -1));
     auto context = deviceState()->tether->context;
     
     // Create a Barney scalar field using the registered type name

@@ -8,6 +8,7 @@
 #include "helium/BaseDevice.h"
 
 #include "BarneyGlobalState.h"
+#include <vector>
 
 namespace barney_device {
 
@@ -121,6 +122,12 @@ struct BarneyDevice : public helium::BaseDevice
       means 'use this specific gpu */
   int m_cudaDevice = -2;
   int m_dataGroupID = -1;
+
+  // Multi-slot: populated from numbered device params (numDataGroups,
+  // dataGroupID0..N, cudaDevice0..N). When non-empty these override
+  // the scalar m_cudaDevice / m_dataGroupID for context creation.
+  std::vector<int> m_multiDataGroupIDs;
+  std::vector<int> m_multiCudaDevices;
   const std::string deviceType = "default";
 #if BARNEY_MPI
   /*! communicator to use for barney data-parallel rendering, set as

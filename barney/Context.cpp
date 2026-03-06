@@ -96,6 +96,11 @@ namespace BARNEY_NS {
     if (!havePeerAccess) {
       std::cout << "don't have peer access between GPUs ... this is going to get interesting" << std::endl;
       deviceWeNeedToCopyToForFBMap = allLocalDevices[0];
+    } else if (allLocalDevices.size() > 1) {
+      // Multiple GPUs: use copy path for framebuffer gather so we don't rely on
+      // peer writes into the linear buffer (avoids partial image when peer access
+      // is reported but cross-GPU writes are unreliable).
+      deviceWeNeedToCopyToForFBMap = allLocalDevices[0];
     }
     
     for (auto &dg : perSlot)
