@@ -5,8 +5,8 @@
 #include "World.h"
 // std
 #include <algorithm>
-#include <set>
 #include <map>
+#include <set>
 
 namespace barney_device {
 
@@ -33,7 +33,6 @@ namespace barney_device {
 
   World::~World()
   {
-    auto *state = deviceState();
     BANARI_TRACK_LEAKS(std::cout << "#banari: ~World deconstructing"
                        << std::endl);
     tetheredModel = {};
@@ -122,7 +121,7 @@ namespace barney_device {
       m_instances.push_back(m_zeroInstance.ptr);
   }
 
-    void World::markFinalized()
+  void World::markFinalized()
   {
     deviceState()->markSceneChanged();
     Object::markFinalized();
@@ -131,10 +130,31 @@ namespace barney_device {
 
   BNModel World::makeCurrent()
   {
-    auto *state = deviceState();
-
     buildBarneyModel();
     return tetheredModel->model;
+  }
+
+  void World::uploadInstanceAttributes(const InstanceAttributes &attributes)
+  {
+    auto barneyModel = tetheredModel->model;
+    int  slot    = deviceState()->slot;
+    auto context = deviceState()->tether->context;
+
+    for (int i = 0; i < Instance::Attributes::count; i++) {
+      if (m_attributesData[i]) {
+        bnRelease(m_attributesData[i]);
+        m_attributesData[i] = 0;
+      }
+      m_attributesData[i] =
+        bnDataCreate(context, slot, BN_FLOAT4,
+                     attributes[i].size(), attributes[i].data());
+    }
+
+    for (int i = 0; i < Instance::Attributes::count; i++) {
+      std::string attribName = std::string("attribute") + std::to_string(i);
+      bnSetInstanceAttributes(barneyModel, slot,
+                              attribName.c_str(), m_attributesData[i]);
+    }
   }
 
   void World::buildBarneyModel()
@@ -143,16 +163,31 @@ namespace barney_device {
     if (state->objectUpdates.lastSceneChange <= m_lastBarneyModelBuild)
       return;
 
-    reportMessage(ANARI_SEVERITY_DEBUG, "barney::World rebuilding model");
+    bool structural =
+      m_lastBarneyModelBuild == 0
+      || state->objectUpdates.lastStructuralChange > m_lastBarneyModelBuild;
 
+    if (structural) {
+      reportMessage(ANARI_SEVERITY_DEBUG, "barney::World full model rebuild");
+      fullRebuild();
+    } else {
+      reportMessage(ANARI_SEVERITY_DEBUG, "barney::World transform-only update");
+      transformOnlyUpdate();
+    }
+
+    m_lastBarneyModelBuild = helium::newTimeStamp();
+  }
+
+  void World::fullRebuild()
+  {
     auto barneyModel = tetheredModel->model;
-    auto context = state->tether->context;
-    int defaultSlot = state->slot;
+    auto context = deviceState()->tether->context;
+    int defaultSlot = deviceState()->slot;
 
     // Collect all known slot indices so even empty ones get bnSetInstances
     std::set<int> allSlots;
     allSlots.insert(defaultSlot);
-    for (auto &kv : state->dataRankToSlot)
+    for (auto &kv : deviceState()->dataRankToSlot)
       allSlots.insert(kv.second);
 
     struct SlotData {
@@ -244,8 +279,43 @@ namespace barney_device {
 
     for (auto &[key, bg] : barneyGroupCache)
       bnRelease(bg);
+  }
 
-    m_lastBarneyModelBuild = helium::newTimeStamp();
+  void World::transformOnlyUpdate()
+  {
+    auto barneyModel = tetheredModel->model;
+    int  slot    = deviceState()->slot;
+
+    std::vector<BNTransform> barneyTransforms;
+    InstanceAttributes attributes;
+    barneyTransforms.reserve(m_instances.size());
+    for (auto &a : attributes)
+      a.clear();
+
+    for (auto inst : m_instances) {
+      if (!inst) continue;
+      if (!inst->group()) continue;
+
+      BNTransform bt;
+      inst->writeTransform(&bt);
+      barneyTransforms.push_back(bt);
+
+      if (!inst->attributes)
+        continue;
+      for (int i = 0; i < Instance::Attributes::count; i++) {
+        if (isnan(inst->attributes->values[i].x))
+          continue;
+        while (attributes[i].size() < barneyTransforms.size())
+          attributes[i].push_back(math::float4(NAN));
+        attributes[i].back() = inst->attributes->values[i];
+      }
+    }
+
+    assert(barneyModel);
+    uploadInstanceAttributes(attributes);
+    bnUpdateInstanceTransforms(barneyModel, slot,
+                               barneyTransforms.data(),
+                               (int)barneyTransforms.size());
   }
 
 } // namespace barney_device

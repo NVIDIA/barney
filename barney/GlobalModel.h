@@ -41,11 +41,16 @@ namespace BARNEY_NS {
                       int numInstances) override
     { getSlot(slot)->setInstances(groups,xfms,numInstances); }
 
+    void updateInstanceTransforms(int slot,
+                                  const affine3f *xfms,
+                                  int numInstances) override
+    { getSlot(slot)->updateInstanceTransforms(xfms,numInstances); }
+
     void setInstanceAttributes(int slot,
                                const std::string &which,
                                Data::SP data) override
     { getSlot(slot)->setInstanceAttributes(which,data?data->as<PODData>():PODData::SP{}); }
-    
+
     void build(int slot) override
     { getSlot(slot)->build(); }
       

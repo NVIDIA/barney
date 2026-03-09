@@ -50,7 +50,11 @@ namespace barney_device {
 
     bool        m_valid           {false};
     bool        m_enableDenoising {true};
+    bool        m_enableUpscaling {false};
     math::uint2 m_size            { 0,0 };
+    /*! Actual framebuffer dimensions (from bnFrameBufferGetSize after
+        resize). Matches buffer layout so map() reports correct stride. */
+    math::uint2 m_displaySize     { 0,0 };
 
     struct {
       // color cold be uint or float4; if float4 we just allocate

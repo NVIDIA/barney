@@ -18,6 +18,14 @@ directional light source).
   chosen rtc backend. Any other value will turn denoising on
   (conditional upon the chosen backend offering it in the first place)
 
+- `int1 enableUpscaling` : If set to non-zero, the frame buffer will
+  render at half resolution and use the OptiX AI upscaler (UPSCALE2X)
+  to produce full-resolution output. This significantly improves
+  interactive performance with minimal quality loss. Requires an OptiX
+  backend with OPTIX_VERSION >= 80000 and an NVIDIA RTX GPU. When
+  enabled, denoising is automatically applied as part of the upscale
+  pipeline.
+
 ## Lights (`bnLightCreate(<subtype>)`)
 
 ### Environment Map Light (`envmap`)

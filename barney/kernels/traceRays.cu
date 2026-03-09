@@ -23,6 +23,7 @@ namespace BARNEY_NS {
     // launch all in parallel ...
     // ------------------------------------------------------------------
     render::OptixGlobals dd;
+    int slotIdx = 0;
     for (auto model : globalModel->modelSlots) {
       for (auto device : *model->devices) {
         SetActiveGPU forDuration(device);
@@ -35,6 +36,7 @@ namespace BARNEY_NS {
         dd.numRays   = device->rayQueue->numActive;
         dd.world     = model->world->getDD(device);//,rngSeed);
         dd.accel     = model->getInstanceAccel(device);
+        dd.cutPlane  = activeCutPlane;
 
         if (FromEnv::get()->logQueues) {
           std::stringstream ss;
@@ -61,12 +63,16 @@ namespace BARNEY_NS {
                                       &dd);
         }
       }
+      slotIdx++;
     }
 
     // ------------------------------------------------------------------
     // ... and sync 'til all are done
     // ------------------------------------------------------------------
-    syncCheckAll();
+    for (auto device : *devices) {
+      SetActiveGPU forDuration(device);
+      device->rtc->sync();
+    }
     if (FromEnv::get()->logQueues) {
       std::stringstream ss;
       ss << "#bn(" << myRank() << "): ## ray queue kernel TRACE DONE" << std::endl;

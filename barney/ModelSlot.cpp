@@ -86,34 +86,25 @@ namespace BARNEY_NS {
       std::cout << "#barney: un-recognized instance attribute '" << which << "'" << std::endl;
       ;
   }
-  
-  void ModelSlot::build()
-  {
-    std::vector<affine3f> rtcTransforms;
-    EnvMapLight::SP envMapLight;
 
-    // ==================================================================
-    // generate all lights's "raw" data. note this is NOT per device
-    // (yet), even though the use of 'DD's seems to imply so. this
-    // should "eventually" be changed to something where the current
-    // 'world' class gets merged into 'modelslot', and all light,
-    // material, and texture data then live 'per logical device'
-    // ==================================================================
+  void ModelSlot::updateWorldLightsFromInstances()
+  {
     std::vector<QuadLight::DD> quadLights;
     std::vector<DirLight::DD>  dirLights;
-    std::vector<PointLight::DD>  pointLights;
+    std::vector<PointLight::DD> pointLights;
     std::pair<EnvMapLight::SP,affine3f> envLight;
-    
-    for (int i=0;i<instances.groups.size();i++) {
+
+    for (int i = 0; i < (int)instances.groups.size(); i++) {
       Group *group = instances.groups[i].get();
-      if (!group) continue;
-      if (!group->lights) continue;
+      if (!group || !group->lights)
+        continue;
       for (auto &light : group->lights->items) {
-        if (!light) continue;
+        if (!light)
+          continue;
         if (QuadLight::SP quadLight = light->as<QuadLight>()) {
           quadLights.push_back(quadLight->getDD(instances.xfms[i]));
           continue;
-        } 
+        }
         if (DirLight::SP dirLight = light->as<DirLight>()) {
           dirLights.push_back(dirLight->getDD(instances.xfms[i]));
           continue;
@@ -123,16 +114,76 @@ namespace BARNEY_NS {
           continue;
         }
         if (EnvMapLight::SP el = light->as<EnvMapLight>()) {
-          envLight = {el,instances.xfms[i]};
+          envLight = {el, instances.xfms[i]};
           continue;
         }
         throw std::runtime_error("un-handled type of light!?");
       }
     }
-    world->set(envLight.first,envLight.second);
+    world->set(envLight.first, envLight.second);
     world->set(quadLights);
     world->set(dirLights);
     world->set(pointLights);
+  }
+
+  void ModelSlot::flattenInstancesForDevice(Device *device,
+                                            std::vector<rtc::Group *> *rtcGroups,
+                                            std::vector<affine3f> &rtcTransforms,
+                                            std::vector<int> *inputInstIDs)
+  {
+    for (int i = 0; i < (int)instances.groups.size(); i++) {
+      Group *group = instances.groups[i].get();
+      if (!group)
+        continue;
+      Group::PLD *groupPLD = group->getPLD(device);
+
+      auto append = [&](rtc::Group *rtcGroup) {
+        if (!rtcGroup)
+          return;
+        if (rtcGroups)
+          rtcGroups->push_back(rtcGroup);
+        rtcTransforms.push_back(instances.xfms[i]);
+        if (inputInstIDs)
+          inputInstIDs->push_back(i);
+      };
+
+      append(groupPLD->userGeomGroup);
+      append(groupPLD->volumeGeomsGroup);
+      append(groupPLD->triangleGeomGroup);
+      for (auto volumeGroup : groupPLD->volumeGroups)
+        append(volumeGroup);
+    }
+  }
+  
+  void ModelSlot::updateInstanceTransforms(const affine3f *xfms,
+                                           int numInstances)
+  {
+    if (numInstances != (int)instances.groups.size()) {
+      std::cout << "#barney: ignoring transform-only update with mismatched instance count"
+                << std::endl;
+      return;
+    }
+    std::copy(xfms, xfms + numInstances, instances.xfms.data());
+
+    updateWorldLightsFromInstances();
+
+    for (auto device : *devices) {
+      PLD *pld = getPLD(device);
+      if (!pld->instanceGroup)
+        continue;
+
+      std::vector<affine3f> rtcTransforms;
+      flattenInstancesForDevice(device, nullptr, rtcTransforms, nullptr);
+
+      pld->instanceGroup->setTransforms(rtcTransforms);
+      pld->instanceGroup->refitAccel();
+    }
+  }
+
+  void ModelSlot::build()
+  {
+    // Keep light extraction identical to transform-only updates.
+    updateWorldLightsFromInstances();
   
     // ==================================================================
     // generate all (per device) instance lists. note each BGGroup can
@@ -147,40 +198,10 @@ namespace BARNEY_NS {
       std::vector<affine3f>     rtcTransforms;
       std::vector<rtc::Group *> rtcGroups;
       bool firstDevice = (device == (*devices)[0]);
-      for (int i=0;i<instances.groups.size();i++) {
-        Group *group = instances.groups[i].get();
-        if (!group) continue;
-        Group::PLD *groupPLD = group->getPLD(device);
-      
-        if (groupPLD->userGeomGroup) {
-          rtcGroups.push_back(groupPLD->userGeomGroup);
-          rtcTransforms.push_back(instances.xfms[i]);
-          if (firstDevice)
-            inputInstIDs.push_back(i);
-          // if (!instances.userIDs.empty())
-          //   userIDs.push_back(instances.userIDs[i]);
-        }
-        if (groupPLD->volumeGeomsGroup) {
-          rtcGroups.push_back(groupPLD->volumeGeomsGroup);
-          rtcTransforms.push_back(instances.xfms[i]);
-          if (firstDevice)
-            inputInstIDs.push_back(i);
-        }
-
-        if (groupPLD->triangleGeomGroup) {
-          rtcGroups.push_back(groupPLD->triangleGeomGroup);
-          rtcTransforms.push_back(instances.xfms[i]);
-          if (firstDevice)
-            inputInstIDs.push_back(i);
-        }
-        
-        for (auto group : groupPLD->volumeGroups) {
-          rtcGroups.push_back(group);
-          rtcTransforms.push_back(instances.xfms[i]);
-          if (firstDevice)
-            inputInstIDs.push_back(i);
-        }
-      }
+      flattenInstancesForDevice(device,
+                                &rtcGroups,
+                                rtcTransforms,
+                                firstDevice ? &inputInstIDs : nullptr);
   
       if (pld->instanceGroup) {
         device->rtc->freeGroup(pld->instanceGroup);

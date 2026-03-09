@@ -109,11 +109,12 @@ namespace BARNEY_NS {
   typename NanoVDBDataSampler<T>::DD NanoVDBDataSampler<T>::getDD(Device *device)
   {
     DD dd;
-    
+
     assert(sf);
     assert(sf->data);
     dd.nvdbGrid    = (NVDBGridT*)sf->data->getDD(device);
-    
+    dd.indexBounds = sf->indexBounds;
+
     assert(dd.nvdbGrid);
     return dd;
   }

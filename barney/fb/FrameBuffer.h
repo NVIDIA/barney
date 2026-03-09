@@ -31,6 +31,7 @@ namespace BARNEY_NS {
     void resize(BNDataType colorFormat,
                 vec2i size,
                 uint32_t channels) override;
+    vec2i getNumPixels() const override { return numPixels; }
     void resetAccumulation() override
     {  /* whatever we may have in compressed tiles is dirty */ accumID = 0; }
     void freeResources();
@@ -86,11 +87,24 @@ namespace BARNEY_NS {
     
     /*! staging area for the normal channel (vec3f per pixel) */
     void *linearNormalChannel = 0;
+
+    /*! when upscaling, the render-resolution staging buffers that
+        tile linearization writes into (before nearest-neighbor
+        upscale to the display-resolution linear buffers above) */
+    void  *renderAuxChannel    = 0;
+    void  *renderNormalChannel = 0;
+    /*! when upscaling, staging for 2x upscaled color (float4 at numPixels)
+        before convert/copy to app (denoiser runs at half res, we upscale here) */
+    void  *upscaledColorChannel = 0;
     
     /*! the channels we're supposed to have (as asked for on the latest resize()) */
     uint32_t   channels = 0;
     BNDataType colorChannelFormat = BN_DATA_UNDEFINED;
     vec2i      numPixels = {-1,-1};
+
+    /*! actual render resolution (equals numPixels when not upscaling,
+        numPixels/2 when upscaling) */
+    vec2i      renderPixels = {-1,-1};
 
     Device *getDenoiserDevice() const;
 
@@ -119,6 +133,11 @@ namespace BARNEY_NS {
      require an rtc backend that does have a denoiser (\see denoiser
      field), but this allows a user to disable denoising at runtime */
     bool enableDenoising = 1;
+
+    /*! whether to use OptiX AI 2x upscaling. When enabled, tiles
+        render at half resolution and the denoiser upscales to the
+        full display resolution. Requires denoiser support. */
+    bool enableUpscaling = false;
 
     /*! how many samples per pixels have already been accumulated in
         this frame buffer's accumulation buffer. Note this is counted

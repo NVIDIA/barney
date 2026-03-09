@@ -124,6 +124,8 @@ namespace barney_api {
     virtual void  read(BNFrameBufferChannel channel,
                        void *hostPtrToReadInto,
                        BNDataType requestedFormat) = 0;
+    /** Actual framebuffer dimensions (may differ from resize when e.g. upscaling forces even dims). */
+    virtual vec2i getNumPixels() const { return vec2i(-1, -1); }
   };
   
   struct TextureData : public Object {
@@ -157,6 +159,9 @@ namespace barney_api {
                               Group **groups,
                               const affine3f *xfms,
                               int numInstances) = 0;
+    virtual void updateInstanceTransforms(int slot,
+                                          const affine3f *xfms,
+                                          int numInstances) = 0;
     virtual void setInstanceAttributes(int slot,
                                        const std::string &which,
                                        Data::SP data) = 0;

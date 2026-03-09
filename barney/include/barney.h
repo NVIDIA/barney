@@ -366,6 +366,12 @@ void bnFrameBufferRead(BNFrameBuffer fb,
                        void *pointerToReadDataInto,
                        BNDataType requiredFormat);
 
+/*! Return the actual framebuffer dimensions (may differ from resize
+    when e.g. AI upscaling forces even dimensions). Use for buffer
+    allocation and stride when mapping the color channel. */
+BARNEY_API
+void bnFrameBufferGetSize(BNFrameBuffer fb, int *sizeX, int *sizeY);
+
 BARNEY_API
 void bnRender(BNRenderer    renderer,
               BNModel       model,
@@ -378,6 +384,16 @@ void bnSetInstances(BNModel model,
                     BNGroup *groupsToInstantiate,
                     BNTransform *instanceTransforms,
                     int numInstances);
+
+/*! update only the instance transforms for the given slot, reusing
+    existing group structures. This is much faster than bnSetInstances +
+    bnBuild when only transforms change (e.g., animation). The number of
+    instances must match what was previously set via bnSetInstances. */
+BARNEY_API
+void bnUpdateInstanceTransforms(BNModel model,
+                                int whichSlot,
+                                BNTransform *instanceTransforms,
+                                int numInstances);
 
 /*! allows for setting one of 5 attribute arrays for the given slot's
     model. */

@@ -178,7 +178,12 @@ namespace rtc {
       return (GeomGroup*)g;
     }
     
-    void InstanceGroup::buildAccel() 
+    void InstanceGroup::setTransforms(const std::vector<affine3f> &newXfms)
+    {
+      xfms = newXfms;
+    }
+
+    void InstanceGroup::buildAccel()
     {
       embree::Device *device = (embree::Device *)this->device;
       if (embreeScene) {

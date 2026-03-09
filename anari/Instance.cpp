@@ -48,6 +48,7 @@ namespace barney_device {
     }
     
     m_transform = xfm;
+    m_previousGroup = m_group.ptr;
     m_group = getParamObject<Group>("group");
   }
 
@@ -59,7 +60,10 @@ namespace barney_device {
 
   void Instance::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    if (m_group.ptr != m_previousGroup)
+      deviceState()->markStructuralSceneChanged();
+    else
+      deviceState()->markSceneChanged();
     Object::markFinalized();
   }
 

@@ -387,6 +387,18 @@ namespace barney_api {
                                   (const affine3f *)xfms,
                                   numInstances);
   }
+
+  BARNEY_API
+  void bnUpdateInstanceTransforms(BNModel model,
+                                  int slot,
+                                  BNTransform *xfms,
+                                  int numInstances)
+  {
+    LOG_API_ENTRY;
+    checkGet(model)->updateInstanceTransforms(slot,
+                                              (const affine3f *)xfms,
+                                              numInstances);
+  }
   
   BARNEY_API
   void  bnRelease(BNObject _object)
@@ -740,7 +752,16 @@ namespace barney_api {
     LOG_API_ENTRY;
     checkGet(fb)->read(channel,hostPtr,requestedFormat);
   }
-  
+
+  BARNEY_API
+  void bnFrameBufferGetSize(BNFrameBuffer fb, int *sizeX, int *sizeY)
+  {
+    if (!sizeX || !sizeY) return;
+    vec2i np = checkGet(fb)->getNumPixels();
+    *sizeX = np.x;
+    *sizeY = np.y;
+  }
+
   BARNEY_API
   void bnAccumReset(BNFrameBuffer fb)
   {

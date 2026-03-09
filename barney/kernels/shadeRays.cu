@@ -1018,6 +1018,7 @@ namespace BARNEY_NS {
                                  int generation,
                                  uint32_t rngSeed)
   {
+    int slotIdx = 0;
     for (auto slotModel : model->modelSlots) {
       World *world = slotModel->world.get();
       for (auto device : *world->devices) {
@@ -1062,6 +1063,7 @@ namespace BARNEY_NS {
                      generation
                      );
       }
+      slotIdx++;
     }
 
     // ------------------------------------------------------------------

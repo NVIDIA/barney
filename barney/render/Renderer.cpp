@@ -22,12 +22,13 @@ namespace BARNEY_NS {
   Renderer::SP Renderer::create(Context *context)
   { return std::make_shared<Renderer>(context); }
 
-  void Renderer::commit() 
+  void Renderer::commit()
   {
     bgColor         = staged.bgColor;
     ambientRadiance = staged.ambientRadiance;
     pathsPerPixel   = staged.pathsPerPixel;
     bgTexture       = staged.bgTexture;
+    cutPlane        = staged.cutPlane;
   }
   
   bool Renderer::setObject(const std::string &member,
@@ -76,6 +77,10 @@ namespace BARNEY_NS {
       staged.bgColor = value;
       return true;
     }
+    if (member == "cutPlane") {
+      staged.cutPlane = value;
+      return true;
+    }
     return false;
   }
 
@@ -88,6 +93,7 @@ namespace BARNEY_NS {
       : 0;
     dd.ambientRadiance = ambientRadiance;
     dd.pathsPerPixel = pathsPerPixel;
+    dd.cutPlane = cutPlane;
     return dd;
   }
   

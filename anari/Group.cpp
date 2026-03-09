@@ -26,7 +26,7 @@ namespace barney_device {
 
   void Group::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    deviceState()->markStructuralSceneChanged();
     Object::markFinalized();
   }
 

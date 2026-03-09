@@ -21,7 +21,7 @@ namespace BARNEY_NS {
       isOwner(isOwner),
       devices(devices)
   {
-    if (FromEnv::get()->explicitlyDisabled("denoising")) {
+    if (FromEnv::get()->explicitlyDisabled("denoise")) {
       if (context->myRank() == 0)
         std::cout << "#bn: denoising explicitly disabled in env-config." << std::endl;
       enableDenoising = false;
@@ -55,8 +55,12 @@ namespace BARNEY_NS {
       showCrosshairs = value;
       return true;
     }
-    if (member == "enableDenoising") {
+    if (member == "denoise") {
       enableDenoising = value;
+      return true;
+    }
+    if (member == "upscale") {
+      enableUpscaling = value;
       return true;
     }
     return false;
@@ -76,6 +80,18 @@ namespace BARNEY_NS {
     if (linearNormalChannel) {
       device->rtc->freeMem(linearNormalChannel);
       linearNormalChannel = 0;
+    }
+    if (renderAuxChannel) {
+      device->rtc->freeMem(renderAuxChannel);
+      renderAuxChannel = 0;
+    }
+    if (renderNormalChannel) {
+      device->rtc->freeMem(renderNormalChannel);
+      renderNormalChannel = 0;
+    }
+    if (upscaledColorChannel) {
+      device->rtc->freeMem(upscaledColorChannel);
+      upscaledColorChannel = 0;
     }
   }
 
@@ -105,6 +121,60 @@ namespace BARNEY_NS {
   }
 #endif
 
+  // ------------------------------------------------------------------
+  // Nearest-neighbor 2x upscale kernels (for AI upscaling mode)
+  // Uses 1D flattened indexing to match __rtc_launch convention.
+  // ------------------------------------------------------------------
+
+  /*! 2x nearest-neighbor upscale for uint32 data (depth, primID, etc.) */
+  __rtc_global
+  void upscale2xUint32Kernel(const rtc::ComputeInterface &ci,
+                             uint32_t *out, vec2i outSize,
+                             const uint32_t *in, vec2i inSize)
+  {
+    int tid = ci.getThreadIdx().x + ci.getBlockIdx().x * ci.getBlockDim().x;
+    int ox = tid % outSize.x;
+    int oy = tid / outSize.x;
+    if (oy >= outSize.y) return;
+
+    int ix = min(ox / 2, inSize.x - 1);
+    int iy = min(oy / 2, inSize.y - 1);
+    out[tid] = in[ix + inSize.x * iy];
+  }
+
+  /*! 2x nearest-neighbor upscale for vec3f data (normals) */
+  __rtc_global
+  void upscale2xVec3fKernel(const rtc::ComputeInterface &ci,
+                            vec3f *out, vec2i outSize,
+                            const vec3f *in, vec2i inSize)
+  {
+    int tid = ci.getThreadIdx().x + ci.getBlockIdx().x * ci.getBlockDim().x;
+    int ox = tid % outSize.x;
+    int oy = tid / outSize.x;
+    if (oy >= outSize.y) return;
+
+    int ix = min(ox / 2, inSize.x - 1);
+    int iy = min(oy / 2, inSize.y - 1);
+    out[tid] = in[ix + inSize.x * iy];
+  }
+
+  /*! 2x nearest-neighbor upscale for vec4f data (color); used when AI
+      upscaling is enabled (we use HDR denoiser at half res then upscale ourselves). */
+  __rtc_global
+  void upscale2xVec4fKernel(const rtc::ComputeInterface &ci,
+                            vec4f *out, vec2i outSize,
+                            const vec4f *in, vec2i inSize)
+  {
+    int tid = ci.getThreadIdx().x + ci.getBlockIdx().x * ci.getBlockDim().x;
+    int ox = tid % outSize.x;
+    int oy = tid / outSize.x;
+    if (oy >= outSize.y) return;
+
+    int ix = min(ox / 2, inSize.x - 1);
+    int iy = min(oy / 2, inSize.y - 1);
+    out[tid] = in[ix + inSize.x * iy];
+  }
+
   void FrameBuffer::finalizeTiles()
   {}
 
@@ -113,12 +183,8 @@ namespace BARNEY_NS {
     Device *device = getDenoiserDevice();
     SetActiveGPU forDuration(device);
 
-    /* first, figure out whether we do denoising, and where to write
-       color and normals to. fi we do denoisign this will (ahve to) go
-       into the respective inputs of the denoiser; otherwise, we write
-       color directly into our linearbuffer, and won't write normal at
-       all */
-    bool doDenoising = (denoiser != 0) && enableDenoising;
+    bool doDenoising = (denoiser != 0) && (enableDenoising || enableUpscaling);
+
     bool needNormalChannel = (channels & BN_FB_NORMAL) && linearNormalChannel;
     void *colorCopyTarget
       = doDenoising
@@ -134,15 +200,20 @@ namespace BARNEY_NS {
       ? BN_FLOAT4
       : colorChannelFormat;
 
-    // this is virtual, and will incur either device copies or mpi
-    // pack-gather-unpack
     gatherColorChannel(colorCopyTarget,gatherType,normalCopyTarget);
 
-    // if denoising AND normal channel requested, copy normals from
-    // denoiser input to our linear buffer
     if (doDenoising && needNormalChannel) {
-      device->rtc->copy(linearNormalChannel, denoiser->in_normal,
-                        numPixels.x*numPixels.y*sizeof(vec3f));
+      if (enableUpscaling && renderPixels != numPixels) {
+        int totalOut = numPixels.x * numPixels.y;
+        __rtc_launch(device->rtc,
+                     upscale2xVec3fKernel,
+                     divRoundUp(totalOut, 256), 256,
+                     (vec3f*)linearNormalChannel, numPixels,
+                     denoiser->in_normal, renderPixels);
+      } else {
+        device->rtc->copy(linearNormalChannel, denoiser->in_normal,
+                          renderPixels.x*renderPixels.y*sizeof(vec3f));
+      }
     }
 
     if (channels & BN_FB_DEPTH)
@@ -166,37 +237,44 @@ namespace BARNEY_NS {
     Device *device = getDenoiserDevice();
     SetActiveGPU forDuration(device);
 
-    /* first, figure out whether we do denoising, and where to write
-       color and normals to. fi we do denoisign this will (ahve to) go
-       into the respective inputs of the denoiser; otherwise, we write
-       color directly into our linearbuffer, and won't write normal at
-       all */
-    bool doDenoising = denoiser != 0 && enableDenoising;
+    bool doDenoising = denoiser != 0 && (enableDenoising || enableUpscaling);
     if (doDenoising) {
-      /* run denoiser - this will write pixels in float4 format to
-         denoiser->out_rgba */
       float blendFactor = (accumID-1) / (accumID+100.f);
-      // iw - denoiser (currently) doesn't have eaccess to device
-      // stream, so runs in default stream --> have to make sure that
-      // device stream is synced before we run it.
       device->rtc->sync();
       denoiser->run(blendFactor);
 
+      // We always use HDR denoiser (no OptiX UPSCALE2X). When enableUpscaling,
+      // denoiser output is at renderPixels; we 2x upscale to linearColorChannel
+      // at numPixels. When not upscaling, denoiser output is at numPixels.
+      vec2i outDims = denoiser->outputDims;
+      vec4f *colorSrc = denoiser->out_rgba;
+      if (enableUpscaling && renderPixels != numPixels && upscaledColorChannel) {
+        int totalOut = numPixels.x * numPixels.y;
+        __rtc_launch(device->rtc,
+                     upscale2xVec4fKernel,
+                     divRoundUp(totalOut, 256), 256,
+                     (vec4f*)upscaledColorChannel, numPixels,
+                     denoiser->out_rgba, renderPixels);
+        device->rtc->sync();
+        colorSrc = (vec4f*)upscaledColorChannel;
+        outDims = numPixels;
+      }
+
       switch(requestedFormat) {
       case BN_FLOAT4: {
-        device->rtc->copy(appMemory,denoiser->out_rgba,
-                          numPixels.x*numPixels.y*sizeof(vec4f));
+        device->rtc->copy(appMemory, colorSrc,
+                          outDims.x*outDims.y*sizeof(vec4f));
       } break;
       case BN_UFIXED8_RGBA:
       case BN_UFIXED8_RGBA_SRGB: {
         bool srgb = (requestedFormat == BN_UFIXED8_RGBA_SRGB);
         vec2ui bs(8,8);
         LinearToFixed8 args = {
-          (uint32_t*)linearColorChannel,denoiser->out_rgba,numPixels,srgb
+          (uint32_t*)linearColorChannel, colorSrc, outDims, srgb
         };
-        linear_toFixed8->launch(divRoundUp(vec2ui(numPixels),bs),bs,&args);
+        linear_toFixed8->launch(divRoundUp(vec2ui(outDims),bs),bs,&args);
         device->rtc->copy(appMemory,linearColorChannel,
-                          numPixels.x*numPixels.y*sizeof(uint32_t));
+                          outDims.x*outDims.y*sizeof(uint32_t));
       } break;
       default:
         throw std::runtime_error
@@ -269,7 +347,19 @@ namespace BARNEY_NS {
         channel == BN_FB_PRIMID ||
         channel == BN_FB_INSTID ||
         channel == BN_FB_OBJID) {
-      writeAuxChannel(linearAuxChannel,channel);
+      if (enableUpscaling && renderPixels != numPixels && renderAuxChannel) {
+        // linearize at render resolution, then upscale to display resolution
+        writeAuxChannel(renderAuxChannel,channel);
+        int totalOut = numPixels.x * numPixels.y;
+        __rtc_launch(device->rtc,
+                     upscale2xUint32Kernel,
+                     divRoundUp(totalOut, 256), 256,
+                     (uint32_t*)linearAuxChannel, numPixels,
+                     (const uint32_t*)renderAuxChannel, renderPixels);
+        device->rtc->sync();
+      } else {
+        writeAuxChannel(linearAuxChannel,channel);
+      }
       // NOTE: depth + id buffers happen to be the same bytes-per-pixel
       device->rtc->copy(appMemory,linearAuxChannel,
                         numPixels.x*numPixels.y*sizeof(uint32_t));
@@ -277,7 +367,7 @@ namespace BARNEY_NS {
     }
 
     if (channel == BN_FB_NORMAL && linearNormalChannel) {
-      // normals were already linearized during finalizeFrame()
+      // normals were already linearized (and upscaled if needed) during finalizeFrame()
       device->rtc->copy(appMemory,linearNormalChannel,
                         numPixels.x*numPixels.y*sizeof(vec3f));
       return;
@@ -295,11 +385,25 @@ namespace BARNEY_NS {
     this->channels = channels;
     this->colorChannelFormat = colorFormat;
 
-    for (auto device : *devices)
-      getFor(device)->resize(channels,size);
-
     freeResources();
+
+    // display resolution - keep exactly as the app requested so the
+    // ANARI frame reports the same size back and the pipeline's
+    // block-copy fast path is used (no stride mismatch).
     numPixels = size;
+
+    // when upscaling, render at half resolution (ceiling division so
+    // that renderPixels covers at least numPixels/2 in each dim; the
+    // upscale kernel clamps edge pixels with min()).
+    if (enableUpscaling && denoiser) {
+      renderPixels = vec2i((numPixels.x + 1) / 2, (numPixels.y + 1) / 2);
+    } else {
+      renderPixels = numPixels;
+    }
+
+    // tiles render at renderPixels
+    for (auto device : *devices)
+      getFor(device)->resize(channels, renderPixels);
 
     size_t sizeOfPixel
       = (colorFormat == BN_FLOAT4)
@@ -308,14 +412,31 @@ namespace BARNEY_NS {
 
     if (isOwner) {
       auto rtc = getDenoiserDevice()->rtc;
-      int np = numPixels.x*numPixels.y;
-      linearColorChannel = rtc->allocMem(np*sizeOfPixel);
-      linearAuxChannel   = rtc->allocMem(np*sizeof(uint32_t));
-      if (channels & BN_FB_NORMAL)
-        linearNormalChannel = rtc->allocMem(np*sizeof(vec3f));
+      int dpNP = numPixels.x * numPixels.y;   // display pixels
+      int rpNP = renderPixels.x * renderPixels.y; // render pixels
 
-      if (denoiser)
-        denoiser->resize(numPixels);
+      // output buffers at display resolution
+      linearColorChannel = rtc->allocMem(dpNP * sizeOfPixel);
+      linearAuxChannel   = rtc->allocMem(dpNP * sizeof(uint32_t));
+      if (channels & BN_FB_NORMAL)
+        linearNormalChannel = rtc->allocMem(dpNP * sizeof(vec3f));
+
+      // when upscaling, we need render-resolution staging buffers
+      // for aux/normal (tile linearization writes at render res,
+      // then we upscale to display res)
+      if (enableUpscaling && renderPixels != numPixels) {
+        renderAuxChannel    = rtc->allocMem(rpNP * sizeof(uint32_t));
+        if (channels & BN_FB_NORMAL)
+          renderNormalChannel = rtc->allocMem(rpNP * sizeof(vec3f));
+        upscaledColorChannel = rtc->allocMem(dpNP * sizeof(vec4f));
+      }
+
+      if (denoiser) {
+        // Never use OptiX UPSCALE2X (unreliable); we run HDR denoiser at half res
+        // and do 2x upscale ourselves in readColorChannel.
+        denoiser->upscaleMode = false;
+        denoiser->resize(renderPixels);
+      }
     }
   }
 

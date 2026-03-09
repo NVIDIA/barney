@@ -34,8 +34,7 @@ Light *Light::createInstance(std::string_view subtype, BarneyGlobalState *s)
 
 void Light::markFinalized()
 {
-  // NOTE: shouldn't need to override this to cause a BNContext rebuild...
-  deviceState()->markSceneChanged();
+  deviceState()->markStructuralSceneChanged();
   Object::markFinalized();
 }
 

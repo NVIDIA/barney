@@ -75,6 +75,7 @@ namespace BARNEY_NS {
       inline __rtc_device float sample(const vec3f P, bool dbg=false) const;
 #endif
       NVDBGridT *nvdbGrid;
+      box3i indexBounds;
     };
 
     void build() override;
@@ -89,11 +90,29 @@ namespace BARNEY_NS {
   float NanoVDBDataSampler<T>::DD::sample(const vec3f P, bool dbg) const
   {
     const auto nvdbLoc = nanovdb::Vec3d(P.x, P.y, P.z);
-    
+
+    // NanoVDB's worldBBox max is computed as map(indexBBox.max + 1), i.e. the
+    // upper corner of the last voxel, not its center. So worldToIndexF maps
+    // a world position to the voxel's lower-left corner index. We subtract 0.5
+    // to shift into voxel-center index coordinates for correct trilinear
+    // sampling. This matches the workaround in VisRTX for cell-centered NanoVDB.
+    auto indexPos = nvdbGrid->worldToIndexF(nvdbLoc);
+    indexPos[0] -= 0.5;
+    indexPos[1] -= 0.5;
+    indexPos[2] -= 0.5;
+
+    // Clamp to the valid voxel range so boundary rays extrapolate the outermost
+    // voxel value rather than blending with the background (inactive) value.
+    indexPos[0] = nanovdb::math::Clamp(indexPos[0],
+        (double)indexBounds.lower.x, (double)indexBounds.upper.x);
+    indexPos[1] = nanovdb::math::Clamp(indexPos[1],
+        (double)indexBounds.lower.y, (double)indexBounds.upper.y);
+    indexPos[2] = nanovdb::math::Clamp(indexPos[2],
+        (double)indexBounds.lower.z, (double)indexBounds.upper.z);
+
     auto acc = nvdbGrid->getAccessor();
-    // auto sampler = nanovdb::math::createSampler<0>(acc);
     auto sampler = nanovdb::math::createSampler<1>(acc);
-    float res = sampler(nanovdb::math::Vec3d(nvdbGrid->worldToIndexF(nvdbLoc)));
+    float res = sampler(nanovdb::math::Vec3d(indexPos));
     return res;
   }
 #endif

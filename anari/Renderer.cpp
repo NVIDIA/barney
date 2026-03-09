@@ -25,6 +25,7 @@ void Renderer::commitParameters()
   m_denoise = getParam<bool>("denoise", true);
   m_background = getParam<math::float4>("background", math::float4(0, 0, 0, 1));
   m_backgroundImage = getParamObject<Array2D>("background");
+  m_cutPlane = getParam<math::float4>("cutPlane", math::float4(0, 0, 0, 0));
 }
 
 void Renderer::finalize()
@@ -33,6 +34,8 @@ void Renderer::finalize()
   bnSet1i(barneyRenderer, "crosshairs", (int)m_crosshairs);
   bnSet1i(barneyRenderer, "pathsPerPixel", (int)m_pixelSamples);
   bnSet1f(barneyRenderer, "ambientRadiance", m_ambientRadiance);
+  bnSet4f(barneyRenderer, "cutPlane",
+          m_cutPlane.x, m_cutPlane.y, m_cutPlane.z, m_cutPlane.w);
 
   if (m_backgroundImage) {
     int sx = m_backgroundImage->size().x;

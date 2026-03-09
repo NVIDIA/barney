@@ -131,10 +131,6 @@ namespace BARNEY_NS {
       renderTiles(renderer,model,camera,fb);
       finalizeTiles(fb);
     }
-    // ------------------------------------------------------------------
-    // done rendering, let the frame buffer know about it, so it can
-    // do whatever needs doing with the latest finalized tiles
-    // ------------------------------------------------------------------
     fb->finalizeFrame();
   }
 

@@ -20,6 +20,16 @@ namespace rtc {
       vec4f *in_rgba   = 0;
       vec3f *in_normal = 0;
       Device* const device;
+
+      /*! if true, the denoiser will use UPSCALE2X mode: input is at
+          render resolution, output is at 2x render resolution. The
+          caller must set this before calling resize(). */
+      bool upscaleMode = false;
+
+      /*! the actual output dimensions. When upscaleMode is false this
+          equals the input dims; when true it is 2x the input dims. Set
+          by resize(). */
+      vec2i outputDims = {0,0};
     };
 
 #if OPTIX_VERSION >= 80000
@@ -37,6 +47,19 @@ namespace rtc {
       void                *denoiserScratch = 0;
       void                *denoiserState   = 0;
       OptixDenoiserSizes   denoiserSizes;
+
+      /*! tracks the mode the OptixDenoiser was created with, so we
+          know when to destroy + recreate */
+      bool currentUpscaleMode = false;
+
+      /*! set to false when denoiser creation or weight loading fails
+          (e.g. missing/incompatible nvoptix.bin); resize() and run()
+          become no-ops so the renderer can proceed without denoising */
+      bool available = true;
+
+      /*! destroy and recreate the OptixDenoiser if upscaleMode
+          changed since the last call */
+      void recreateIfNeeded();
     };
 #endif
     

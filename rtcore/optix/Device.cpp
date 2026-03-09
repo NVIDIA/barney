@@ -7,6 +7,7 @@
 #include "rtcore/optix/Buffer.h"
 #include "rtcore/optix/Geom.h"
 #include "rtcore/optix/Group.h"
+#include <owl/InstanceGroup.h>
 #include <optix.h>
 #include <optix_function_table.h>
 #include <optix_stubs.h>
@@ -31,9 +32,13 @@ namespace rtc {
     Denoiser *Device::createDenoiser()
     {
 #if !OPTIX_DISABLE_DENOISING && OPTIX_VERSION >= 80000
-      return new Optix8Denoiser(this);
+      auto *d = new Optix8Denoiser(this);
+      if (!d->available) {
+        delete d;
+        return nullptr;
+      }
+      return d;
 #else
-      // we only support optix 8 denoiser
       return nullptr;
 #endif
     }
@@ -211,7 +216,10 @@ namespace rtc {
                                  owls.size(),
                                  owls.data(),
                                  (const uint32_t*)instIDs.data(),
-                                 (const float *)xfms.data());
+                                 (const float *)xfms.data(),
+                                 OWL_MATRIX_FORMAT_OWL,
+                                 owl::InstanceGroup::defaultBuildFlags
+                                 | OPTIX_BUILD_FLAG_ALLOW_UPDATE);
       Group *gg = new Group(this,g);
       return gg;
     }

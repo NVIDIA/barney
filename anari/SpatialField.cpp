@@ -56,7 +56,7 @@ namespace barney_device {
 
   void SpatialField::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    deviceState()->markStructuralSceneChanged();
     Object::markFinalized();
   }
 

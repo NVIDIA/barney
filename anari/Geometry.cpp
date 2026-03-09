@@ -168,7 +168,7 @@ namespace barney_device {
 
   void Geometry::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    deviceState()->markStructuralSceneChanged();
     Object::markFinalized();
   }
 

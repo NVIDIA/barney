@@ -222,6 +222,10 @@ namespace BARNEY_NS {
     Device *deviceWeNeedToCopyToForFBMap = nullptr;
     // int const globalIndex;
     GlobalTraceImpl *globalTraceImpl = 0;
+
+    /*! cut plane active during the current renderTiles() call;
+        populated from Renderer::cutPlane and read by traceRaysLocally */
+    vec4f activeCutPlane{0.f, 0.f, 0.f, -1e30f};
   };
 
   struct GlobalTraceImpl {

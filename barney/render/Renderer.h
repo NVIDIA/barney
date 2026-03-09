@@ -21,6 +21,7 @@ namespace BARNEY_NS {
       rtc::TextureObject bgTexture;
       float              ambientRadiance;
       int                pathsPerPixel;
+      vec4f              cutPlane;
     };
     
     Renderer(Context *context);
@@ -50,12 +51,14 @@ namespace BARNEY_NS {
       int         pathsPerPixel   = 1;
       float       ambientRadiance = 1.f;
       int         crosshairs      = 0;
+      vec4f       cutPlane        = vec4f(0,0,0,-1e30f);
     } staged;
     vec4f       bgColor         = vec4f(0,0,0,1.f);
     Texture::SP bgTexture       = 0;
     int         pathsPerPixel   = 1;
     float       ambientRadiance = 1.f;
     int         crosshairs      = 0;
+    vec4f       cutPlane        = vec4f(0,0,0,-1e30f);
   };
 
 }

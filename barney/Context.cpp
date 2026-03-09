@@ -153,12 +153,13 @@ namespace BARNEY_NS {
     for (auto device : *devices)
       device->syncPipelineAndSBT();
 
+    activeCutPlane = renderer->cutPlane;
+
     // iw - todo: add wave-front-merging here.
     for (int p=0;p<renderer->pathsPerPixel;p++) {
 
       if (FromEnv::get()->logQueues) 
         std::cout << "#################### RENDER ######################" << std::endl;
-      // double _t0 = getCurrentTime();
       if (FromEnv::get()->logQueues) 
         std::cout << "==================== new pixel wave ======================" << std::endl;
       generateRays(camera,renderer,fb);
@@ -168,20 +169,10 @@ namespace BARNEY_NS {
 
         bool needHitIDs = fb->needHitIDs() && (generation==0);
         uint32_t rngSeed = fb->accumID*16+generation;
-        if (FromEnv::get()->logQueues) 
-          std::cout << "----- trace (glob) " << generation
-                    << " -----------" << std::endl;
         traceRaysGlobally(model,rngSeed,needHitIDs);
 
-        if (FromEnv::get()->logQueues) 
-          std::cout << "----- shade " << generation
-                    << " -----------" << std::endl;
         shadeRaysLocally(renderer, model, fb, generation, rngSeed);
-        // no sync required here, shadeRays syncs itself.
 
-        if (FromEnv::get()->logQueues) 
-          std::cout << "----- shade " << generation
-                    << " -----------" << std::endl;
         const int numActiveGlobally = numRaysActiveGlobally();
         if (FromEnv::get()->logQueues)
           printf("#generation %i num active %s after bounce\n",

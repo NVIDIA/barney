@@ -44,6 +44,7 @@ namespace barney_device {
   private:
     math::mat4 m_transform;
     helium::IntrusivePtr<Group> m_group;
+    const Group *m_previousGroup = nullptr;
   };
 
 } // namespace barney_device

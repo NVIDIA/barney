@@ -70,6 +70,13 @@
           "tags": [],
           "default": false,
           "description": "enable crosshairs"
+        },
+        {
+          "name": "cutPlane",
+          "types": ["ANARI_FLOAT32_VEC4"],
+          "tags": [],
+          "default": [0.0, 0.0, 0.0, 0.0],
+          "description": "cutting plane equation (nx, ny, nz, d); disabled when w < -1e28"
         }
       ]
     }

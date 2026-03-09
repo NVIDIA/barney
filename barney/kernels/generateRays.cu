@@ -169,6 +169,33 @@ namespace BARNEY_NS {
       ray.isShadowRay = false;
       ray.isInMedium  = false;
       ray.tMax        = 1e30f;
+
+      // Apply cutting plane (disabled if w < -1e28f)
+      if (renderer.cutPlane.w > -1e28f) {
+        vec3f N = vec3f(renderer.cutPlane.x,
+                        renderer.cutPlane.y,
+                        renderer.cutPlane.z);
+        float d_plane  = renderer.cutPlane.w;
+        float dist_org = dot(N, ray.org) + d_plane;
+        float denom    = dot(N, ray.dir);
+        if (dist_org >= 0.f) {
+          // camera on visible side: clip where ray exits the half-space
+          if (denom < 0.f) {
+            float t_cut  = -dist_org / denom;
+            ray.tMax = min(ray.tMax, t_cut);
+          }
+        } else {
+          // camera on invisible side: advance origin to where ray enters
+          // the visible half-space, so interior geometry is reachable
+          if (denom > 0.f) {
+            float t_entry = -dist_org / denom;
+            ray.org += t_entry * ray.dir;
+            // ray now starts on the plane; tMax stays 1e30f
+          } else {
+            ray.tMax = 0.f; // ray never enters visible side: show nothing
+          }
+        }
+      }
       // ray.rngSeed     = rand.next;//state;
       state.numDiffuseBounces = 0;
       if (0 && ray.dbg())
@@ -257,7 +284,7 @@ namespace BARNEY_NS {
                    cameraDD,
                    renderer->getDD(device),
                    accumID,
-                   fb->numPixels,
+                   fb->renderPixels,
                    device->rayQueue->_d_nextWritePos,
                    device->rayQueue->receiveAndShadeWriteQueue,
                    devFB->tileDescs,

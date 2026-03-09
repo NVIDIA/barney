@@ -24,6 +24,9 @@ namespace rtc {
       vec3f *in_normal = 0;
                              
       Device *const rtc;
+
+      bool upscaleMode = false;
+      vec2i outputDims = {0,0};
     };
     
 #if BARNEY_OIDN_CPU

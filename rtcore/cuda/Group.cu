@@ -107,7 +107,12 @@ namespace rtc {
       instBounds[tid] = xfmBounds(inst.objectToWorldXfm,bounds);
     }
 
-    void InstanceGroup::buildAccel() 
+    void InstanceGroup::setTransforms(const std::vector<affine3f> &newXfms)
+    {
+      xfms = newXfms;
+    }
+
+    void InstanceGroup::buildAccel()
     {
       SetActiveGPU forDuration(device);
 

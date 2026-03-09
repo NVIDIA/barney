@@ -19,6 +19,7 @@ namespace rtc {
       virtual ~Group();
       virtual void buildAccel() = 0;
       virtual void refitAccel() { buildAccel(); }
+      virtual void setTransforms(const std::vector<affine3f> &) {}
       AccelHandle getDD() const { return (AccelHandle)d_accel; }
 
       Device *const device;
@@ -65,19 +66,20 @@ namespace rtc {
         cuBQL::bvh3f bvh;
         InstanceRecord *instanceRecords;
       };
-      
+
       InstanceGroup(Device *device,
                     const std::vector<Group *>  &groups,
                     const std::vector<int>      &instanceIDs,
                     const std::vector<affine3f> &xfms);
       void buildAccel() override;
+      void setTransforms(const std::vector<affine3f> &newXfms) override;
 
       DeviceRecord   *d_deviceRecord = 0;
       InstanceRecord *d_instanceRecords = 0;
       bvh3f bvh = { 0,0,0,0 };
       const std::vector<Group *>  groups;
       const std::vector<int>      instanceIDs;
-      const std::vector<affine3f> xfms;
+      std::vector<affine3f> xfms;
     };
     
     struct TrianglesGeomGroup : public GeomGroup {

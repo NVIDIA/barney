@@ -18,6 +18,7 @@ namespace rtc {
       rtc::AccelHandle getDD() const;
       void buildAccel();
       void refitAccel();
+      void setTransforms(const std::vector<affine3f> &xfms);
       
       OWLGroup const owl;
       optix::Device *const device;

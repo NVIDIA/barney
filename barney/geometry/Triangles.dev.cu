@@ -36,6 +36,12 @@ namespace BARNEY_NS {
       int instID    = ti.getInstanceID();
       float depth   = ti.getRayTmax();
 
+      // Cut-plane: reject hits on the invisible side
+      if (OptixGlobals::hitOnInvisibleSide(globals, depth, ti)) {
+        ti.ignoreIntersection();
+        return;
+      }
+
       // ------------------------------------------------------------------
       if (globals.hitIDs) {
         /* ID buffer rendering writes IDs no matter what transparency */

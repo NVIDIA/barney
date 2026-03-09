@@ -31,6 +31,13 @@ namespace barney_device {
     objectUpdates.lastSceneChange = helium::newTimeStamp();
   }
 
+  void BarneyGlobalState::markStructuralSceneChanged()
+  {
+    auto ts = helium::newTimeStamp();
+    objectUpdates.lastSceneChange = ts;
+    objectUpdates.lastStructuralChange = ts;
+  }
+
   bool Tether::allDevicesPresent()
   {
     for (auto dev : devices)

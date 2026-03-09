@@ -31,6 +31,7 @@ namespace barney_device {
     bool m_crosshairs{false};
     bool m_denoise{true};
     anari::math::float4 m_background{0.f, 0.f, 0.f, 1.f};
+    anari::math::float4 m_cutPlane{0.f, 0.f, 0.f, -1e30f};
     helium::ChangeObserverPtr<Array2D> m_backgroundImage;
   };
 

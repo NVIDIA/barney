@@ -278,6 +278,10 @@ namespace BARNEY_NS {
         }
       }
       
+      // Cut-plane: reject hits on the invisible side
+      if (OptixGlobals::hitOnInvisibleSide(globals, hit_t, ti))
+        return;
+
       // .... let optix know we did have a hit.
       ti.reportIntersection(hit_t, 0);
       // ... store the hit in the ray, rqs-style ...

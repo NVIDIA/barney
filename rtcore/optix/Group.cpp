@@ -25,10 +25,17 @@ namespace rtc {
       owlGroupBuildAccel(owl);
     }
     
-    void Group::refitAccel() 
+    void Group::refitAccel()
     {
       owlGroupRefitAccel(owl);
     }
-      
+
+    void Group::setTransforms(const std::vector<affine3f> &xfms)
+    {
+      owlInstanceGroupSetTransforms(owl, 0,
+                                    (const float *)xfms.data(),
+                                    OWL_MATRIX_FORMAT_OWL);
+    }
+
   }
 }

@@ -17,6 +17,10 @@ https://registry.khronos.org/ANARI/specs/1.0/ANARI-1.0.html).
   chosen rtc backend. Any other value will turn denoising on
   (conditional upon the chosen backend offering it in the first place)
 
+- `int1 enableUpscaling` : If set to non-zero, renders at half
+  resolution and uses the OptiX AI upscaler (UPSCALE2X) for
+  full-resolution output. Requires OptiX 8+ and NVIDIA RTX GPU.
+
 ## Lights (`bnLightCreate(<subtype>)`)
 
 ### Environment Map/HDRI Light (`hdri`)

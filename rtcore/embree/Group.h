@@ -16,6 +16,7 @@ namespace rtc {
       virtual ~Group() = default;
       void refitAccel() { buildAccel(); }
       virtual void buildAccel() = 0;
+      virtual void setTransforms(const std::vector<affine3f> &) {}
       
       rtc::AccelHandle getDD() const
       {
@@ -67,8 +68,9 @@ namespace rtc {
                     const std::vector<affine3f> &xfms);
 
       GeomGroup *getGroup(int groupID);
-      
+
       void buildAccel() override;
+      void setTransforms(const std::vector<affine3f> &newXfms) override;
     
       std::vector<Group*>   groups;
       std::vector<affine3f> xfms;

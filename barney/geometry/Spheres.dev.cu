@@ -167,6 +167,11 @@ namespace BARNEY_NS {
       
         hit_t += t_move;
 
+        // Cut-plane: reject hits on the invisible side
+        if (OptixGlobals::hitOnInvisibleSide(
+              OptixGlobals::get(ti), hit_t, ti))
+          return;
+
         // ------------------------------------------------------------------
         ti.reportIntersection(hit_t, 0);
         const OptixGlobals &globals = OptixGlobals::get(ti);

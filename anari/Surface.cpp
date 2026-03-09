@@ -42,7 +42,7 @@ namespace barney_device {
 
   void Surface::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    deviceState()->markStructuralSceneChanged();
     Object::markFinalized();
   }
 

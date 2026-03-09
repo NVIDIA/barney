@@ -150,6 +150,10 @@ namespace BARNEY_NS {
               globals.hitIDs[rayID].objID  = self.userID;
             }
           
+            // Cut-plane: reject hits on the invisible side
+            if (OptixGlobals::hitOnInvisibleSide(globals, hitData.t, ti))
+              return;
+
             // .... and let optix know we did have a hit.
             ti.reportIntersection(hitData.t, 0);
             return;
@@ -191,13 +195,17 @@ namespace BARNEY_NS {
               globals.hitIDs[rayID].objID  = self.userID;
             }
           
+            // Cut-plane: reject hits on the invisible side
+            if (OptixGlobals::hitOnInvisibleSide(globals, hitData.t, ti))
+              return;
+
             // .... and let optix know we did have a hit.
             ti.reportIntersection(hitData.t, 0);
             return;
           }
         }
       }
-      
+
       const float m4 = dot(rd, oa);
       const float m5 = dot(oa, oa);
       const float rr = ra - rb;
@@ -248,6 +256,10 @@ namespace BARNEY_NS {
           globals.hitIDs[rayID].objID  = self.userID;
         }
         
+        // Cut-plane: reject hits on the invisible side
+        if (OptixGlobals::hitOnInvisibleSide(globals, hitData.t, ti))
+          return;
+
         // .... and let optix know we did have a hit.
         ti.reportIntersection(hitData.t, 0);
       }

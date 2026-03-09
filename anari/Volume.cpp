@@ -22,7 +22,7 @@ namespace barney_device {
 
   void Volume::markFinalized()
   {
-    deviceState()->markSceneChanged();
+    deviceState()->markStructuralSceneChanged();
     Object::markFinalized();
   }
 

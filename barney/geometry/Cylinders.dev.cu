@@ -254,6 +254,10 @@ namespace BARNEY_NS {
         globals.hitIDs[rayID].objID  = self.userID;
       }
     
+      // Cut-plane: reject hits on the invisible side
+      if (OptixGlobals::hitOnInvisibleSide(globals, ray.tMax, ti))
+        return;
+
       ti.reportIntersection(ray.tMax, 0);
     }
 #endif

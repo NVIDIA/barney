@@ -63,11 +63,10 @@ namespace BARNEY_NS {
   {
     float accumScale = 1.f/accumID;
     for (auto device : *devices) {
-      getFor(device)->linearizeColorAndNormal
+      auto tfb = getFor(device);
+      tfb->linearizeColorAndNormal
         (linearColor,gatherType,linearNormal,accumScale);
     }
-    for (auto device : *devices)
-      device->rtc->sync();
   }
 
   /*! read one of the auxiliary (not color or normal) buffers into

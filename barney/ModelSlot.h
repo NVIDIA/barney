@@ -34,7 +34,13 @@ namespace BARNEY_NS {
     void setInstances(barney_api::Group **groups,
                       const affine3f *xfms,
                       int numInstances);
+    void updateInstanceTransforms(const affine3f *xfms, int numInstances);
     void setInstanceAttributes(const std::string &which, const PODData::SP &data);
+    void updateWorldLightsFromInstances();
+    void flattenInstancesForDevice(Device *device,
+                                   std::vector<rtc::Group *> *rtcGroups,
+                                   std::vector<affine3f> &rtcTransforms,
+                                   std::vector<int> *inputInstIDs);
 
     struct {
       std::vector<Group::SP> groups;

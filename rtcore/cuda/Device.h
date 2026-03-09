@@ -73,13 +73,16 @@ namespace rtc {
     {
       Denoiser(Device* device) : device(device) {}
       ~Denoiser() = default;
-      void resize(vec2i dims) {}
+      void resize(vec2i dims) { outputDims = dims; }
       void run(float blendFactor) {}
       Device* const device;
 
       vec4f *in_rgba = 0;
       vec4f *out_rgba = 0;
       vec3f *in_normal = 0;
+
+      bool upscaleMode = false;
+      vec2i outputDims = {0,0};
     };
 
     rtc::AccelHandle getAccelHandle(Group *ig);

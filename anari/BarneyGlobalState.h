@@ -68,6 +68,7 @@ namespace barney_device {
     struct ObjectUpdates
     {
       helium::TimeStamp lastSceneChange{0};
+      helium::TimeStamp lastStructuralChange{0};
     } objectUpdates;
 
     int slot = -1;
@@ -101,8 +102,9 @@ namespace barney_device {
 
     BarneyGlobalState(ANARIDevice d);
     ~BarneyGlobalState();
-    
+
     void markSceneChanged();
+    void markStructuralSceneChanged();
   };
 
   // Helper functions/macros ////////////////////////////////////////////////////
