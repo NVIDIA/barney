@@ -78,16 +78,18 @@ namespace BARNEY_NS {
     { /* nothing to do */ }
   };
    
-  using NanoVDBMC_float = MCVolumeAccel<NanoVDBDataSampler<float>>;
-  typedef typename NanoVDBMC_float::DD bla;
-  typedef MCAccel_NanoVDB_Programs<float> blubb;
-  
-  RTC_EXPORT_USER_GEOM(NanoVDBMC_float,
-                       typename NanoVDBMC_float::DD,
-                       MCAccel_NanoVDB_Programs<float>,false,false);
-  RTC_EXPORT_USER_GEOM(NanoVDBMC_Iso_float,
-                       typename MCIsoSurfaceAccel<NanoVDBDataSampler<float>>::DD,
-                       MCIsoAccel_NanoVDB_Programs<float>,false,false);
+#define NANOVDB_EXPORT_GEOM(BuildType, Suffix, EnumName) \
+  RTC_EXPORT_USER_GEOM( \
+    NanoVDBMC_##Suffix, \
+    typename MCVolumeAccel<NanoVDBDataSampler<BuildType>>::DD, \
+    MCAccel_NanoVDB_Programs<BuildType>,false,false); \
+  RTC_EXPORT_USER_GEOM( \
+    NanoVDBMC_Iso_##Suffix, \
+    typename MCIsoSurfaceAccel<NanoVDBDataSampler<BuildType>>::DD, \
+    MCIsoAccel_NanoVDB_Programs<BuildType>,false,false);
+
+  BARNEY_NANOVDB_FLOAT_TYPES(NANOVDB_EXPORT_GEOM)
+#undef NANOVDB_EXPORT_GEOM
 }
 
 

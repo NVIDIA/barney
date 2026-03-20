@@ -16,6 +16,17 @@
 #include <nanovdb/NanoVDB.h>
 #include <nanovdb/math/Math.h>
 
+// Each entry is MACRO(BuildType, Suffix, EnumName) where:
+//   BuildType — the nanovdb build type (template argument to NanoTree<>)
+//   Suffix    — a token used in symbol names (e.g., device program names)
+//   EnumName  — the nanovdb::GridType enumerator name
+#define BARNEY_NANOVDB_FLOAT_TYPES(MACRO) \
+  MACRO(float,           float, Float) \
+  MACRO(nanovdb::Fp4,    Fp4,   Fp4)   \
+  MACRO(nanovdb::Fp8,    Fp8,   Fp8)   \
+  MACRO(nanovdb::Fp16,   Fp16,  Fp16)  \
+  MACRO(nanovdb::FpN,    FpN,   FpN)
+
 namespace BARNEY_NS {
 
   struct ModelSlot;

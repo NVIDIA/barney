@@ -15,21 +15,23 @@
 
 namespace BARNEY_NS {
 
-  RTC_IMPORT_USER_GEOM(/*file*/NanoVDB,/*name*/NanoVDBMC_float,
-                       /*geomtype device data */
-                       MCVolumeAccel<NanoVDBDataSampler<float>>::DD,false,false);
-  RTC_IMPORT_USER_GEOM(/*file*/NanoVDB,/*name*/NanoVDBMC_Iso_float,
-                       /*geomtype device data */
-                       MCIsoSurfaceAccel<NanoVDBDataSampler<float>>::DD,false,false);
+#define NANOVDB_IMPORT_GEOM(BuildType, Suffix, EnumName) \
+  RTC_IMPORT_USER_GEOM(NanoVDB, NanoVDBMC_##Suffix, \
+    MCVolumeAccel<NanoVDBDataSampler<BuildType>>::DD,false,false); \
+  RTC_IMPORT_USER_GEOM(NanoVDB, NanoVDBMC_Iso_##Suffix, \
+    MCIsoSurfaceAccel<NanoVDBDataSampler<BuildType>>::DD,false,false);
 
-  /*! compute kernel that computes macro-cell information for a 3D
-    structured data grid */
+  BARNEY_NANOVDB_FLOAT_TYPES(NANOVDB_IMPORT_GEOM)
+#undef NANOVDB_IMPORT_GEOM
+
+  template<typename BuildType>
   __rtc_global
-  void NanoVDBData_float_computeMCs(const rtc::ComputeInterface &ci,
-                                    /* kernel ARGS */
-                                    MCGrid::DD mcGrid,
-                                    NanoVDBData::DD dd)
+  void NanoVDBData_computeMCs(const rtc::ComputeInterface &ci,
+                              MCGrid::DD mcGrid,
+                              NanoVDBData::DD dd)
   {
+    using GridT = typename nanovdb::Grid<nanovdb::NanoTree<BuildType>>;
+
     vec3i mcDims = mcGrid.dims;
     int tid = ci.launchIndex().x;
     if (tid >= mcDims.x*mcDims.y*mcDims.z) return;
@@ -46,8 +48,7 @@ namespace BARNEY_NS {
     nanovdb::CoordBBox bbox({lo.x,lo.y,lo.z},
                             {hi.x+1,hi.y+1,hi.z+1});
 
-    using GridType = typename nanovdb::Grid<nanovdb::NanoTree<float>>;
-    GridType *gridPtr = (GridType *)dd.gridData;
+    GridT *gridPtr = (GridT *)dd.gridData;
     auto acc = gridPtr->getAccessor();
 
     range1f scalarRange;
@@ -91,11 +92,23 @@ namespace BARNEY_NS {
       assert(lc == lc64);
       int bs = 128;
       int nb = divRoundUp(lc,bs);
-      __rtc_launch(device->rtc,
-                   NanoVDBData_float_computeMCs,
-                   nb,bs,
-                   mcGrid->getDD(device),
-                   getDD(device));
+
+      auto mcDD = mcGrid->getDD(device);
+      auto dd = getDD(device);
+
+      switch (gridType) {
+#define LAUNCH_MC(BuildType, Suffix, EnumName) \
+      case nanovdb::GridType::EnumName: \
+        __rtc_launch(device->rtc, \
+                     (NanoVDBData_computeMCs<BuildType>), \
+                     nb,bs, mcDD, dd); \
+        break;
+      BARNEY_NANOVDB_FLOAT_TYPES(LAUNCH_MC)
+#undef LAUNCH_MC
+      default:
+        throw std::runtime_error
+          ("barney::NanoVDBData: unsupported grid type for macro-cell build");
+      }
     }
     for (auto device : *devices)
       device->sync();
@@ -135,22 +148,38 @@ namespace BARNEY_NS {
     return dd;
   }
   
-  VolumeAccel::SP NanoVDBData::createAccel(Volume *volume) 
+  VolumeAccel::SP NanoVDBData::createAccel(Volume *volume)
   {
-    auto sampler = std::make_shared<NanoVDBDataSampler<float>>(this);
-    return std::make_shared<MCVolumeAccel<NanoVDBDataSampler<float>>>
-      (volume,
-       createGeomType_NanoVDBMC_float,
-       sampler);
+    switch (gridType) {
+#define CREATE_ACCEL(BuildType, Suffix, EnumName) \
+    case nanovdb::GridType::EnumName: { \
+      auto sampler = std::make_shared<NanoVDBDataSampler<BuildType>>(this); \
+      return std::make_shared<MCVolumeAccel<NanoVDBDataSampler<BuildType>>> \
+        (volume, createGeomType_NanoVDBMC_##Suffix, sampler); \
+    }
+    BARNEY_NANOVDB_FLOAT_TYPES(CREATE_ACCEL)
+#undef CREATE_ACCEL
+    default:
+      throw std::runtime_error
+        ("barney::NanoVDBData::createAccel: unsupported grid type");
+    }
   }
   
-  IsoSurfaceAccel::SP NanoVDBData::createIsoAccel(IsoSurface *isoSurface) 
+  IsoSurfaceAccel::SP NanoVDBData::createIsoAccel(IsoSurface *isoSurface)
   {
-    auto sampler = std::make_shared<NanoVDBDataSampler<float>>(this);
-    return std::make_shared<MCIsoSurfaceAccel<NanoVDBDataSampler<float>>>
-      (isoSurface,
-       createGeomType_NanoVDBMC_Iso_float,
-       sampler);
+    switch (gridType) {
+#define CREATE_ISO_ACCEL(BuildType, Suffix, EnumName) \
+    case nanovdb::GridType::EnumName: { \
+      auto sampler = std::make_shared<NanoVDBDataSampler<BuildType>>(this); \
+      return std::make_shared<MCIsoSurfaceAccel<NanoVDBDataSampler<BuildType>>> \
+        (isoSurface, createGeomType_NanoVDBMC_Iso_##Suffix, sampler); \
+    }
+    BARNEY_NANOVDB_FLOAT_TYPES(CREATE_ISO_ACCEL)
+#undef CREATE_ISO_ACCEL
+    default:
+      throw std::runtime_error
+        ("barney::NanoVDBData::createIsoAccel: unsupported grid type");
+    }
   }
   
   // ==================================================================
@@ -194,9 +223,14 @@ namespace BARNEY_NS {
     gridSize.z = nvGridSize[2];
     
     gridType = gridMetadata->gridType();
-    if (gridType != nanovdb::GridType::Float)
+    bool supported = false;
+#define CHECK_TYPE(BuildType, Suffix, EnumName) \
+    supported = supported || (gridType == nanovdb::GridType::EnumName);
+    BARNEY_NANOVDB_FLOAT_TYPES(CHECK_TYPE)
+#undef CHECK_TYPE
+    if (!supported)
       throw std::runtime_error
-        ("barney::NanoVDBData currently implemented only for float grids");
+        ("barney::NanoVDBData: unsupported grid type");
   }
   
 }
