@@ -50,6 +50,14 @@ extern "C"
 barney::BarneyBaseDevice *createDevice_barney_cuda(ANARILibrary,const char *);
 #endif
 
+#if BARNEY_BACKEND_HIP
+// ------------------------------------------------------------------
+// defined in anari_library_barney_hip_static
+// ------------------------------------------------------------------
+extern "C"
+barney::BarneyBaseDevice *createDevice_barney_hip(ANARILibrary,const char *);
+#endif
+
 #if BARNEY_BACKEND_CPU
 // ------------------------------------------------------------------
 // defined in anari_library_barney_cpu_static
@@ -157,6 +165,13 @@ namespace BARNEY_NS_CUDA { namespace anari {
                                              const void *statusCBPtr);
   }}
 #endif
+#if BARNEY_BACKEND_HIP
+namespace BARNEY_NS_HIP { namespace anari {
+    ::anari::LibraryImpl *createAnariLibrary(void *lib,
+                                             ANARIStatusCallback defaultStatusCB,
+                                             const void *statusCBPtr);
+  }}
+#endif
 #if BARNEY_BACKEND_CPU
 namespace BARNEY_NS_CPU { namespace anari {
     ::anari::LibraryImpl *createAnariLibrary(void *lib,
@@ -175,6 +190,10 @@ ANARI_DEFINE_LIBRARY_ENTRYPOINT(barney, handle, scb, scbPtr)
 # endif
 # if BARNEY_BACKEND_CUDA
   if (auto lib = BARNEY_NS_CUDA::anari::createAnariLibrary(handle,scb,scbPtr))
+    return (ANARILibrary)lib;
+# endif
+# if BARNEY_BACKEND_HIP
+  if (auto lib = BARNEY_NS_HIP::anari::createAnariLibrary(handle,scb,scbPtr))
     return (ANARILibrary)lib;
 # endif
 # if BARNEY_BACKEND_CPU

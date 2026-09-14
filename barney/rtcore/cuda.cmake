@@ -38,7 +38,6 @@ function(rtc_build_device_sources libname)
   target_compile_definitions(${libname} PRIVATE
     -DBARNEY_DEVICE_PROGRAM=1)
   target_link_libraries(${libname}
-#    barney_rtc_cuda_${backend}
     barney_rtc_cuda
     barney_rtc_cudaCommon_${backend}
     barney_config_${backend}

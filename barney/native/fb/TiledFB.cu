@@ -6,7 +6,7 @@
 #include "native/fb/FrameBuffer.h"
 #include "native/common/math.h"
 
-namespace BARNEY_NS {
+namespace BARNEY_NS { 
   namespace native {
 
     __rtc_global

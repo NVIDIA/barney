@@ -190,8 +190,7 @@ namespace BARNEY_NS {
                 = world.instIDToUserInstID
                 ? world.instIDToUserInstID[instID]
                 : instID;
-              globals.hitIDs[rayID].instID
-                = 13+world.rank;
+              globals.hitIDs[rayID].instID = world.rank;
               globals.hitIDs[rayID].objID  = self.userID;
               globals.hitIDs[rayID].depth  = depth;
             }

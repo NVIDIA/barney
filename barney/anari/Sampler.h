@@ -114,7 +114,7 @@ namespace BARNEY_NS {
       ~PrimitiveSampler() override;
       void commitParameters() override;
       void finalize() override;
-      bool isValid() const;
+      bool isValid() const override;
     
     private:
       BNData m_bnArrayData = 0;

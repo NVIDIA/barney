@@ -22,7 +22,7 @@ namespace BARNEY_NS {
     };
 
 #if RTC_DEVICE_CODE
-    inline __rtc_device 
+    inline __rtc_device  
     void TraceRays::run(rtc::TraceInterface &ti)
     {
       const int rayID
