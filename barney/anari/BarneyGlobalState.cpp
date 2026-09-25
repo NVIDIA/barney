@@ -8,6 +8,16 @@
 #include "anari/Frame.h"
 #include "anari/common.h"
 
+// for dlsym
+#ifdef _WIN32
+# include <windows.h>
+#else
+# include <dlfcn.h>
+#endif
+
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 namespace BARNEY_NS {
   namespace anari {
     
@@ -20,7 +30,9 @@ namespace BARNEY_NS {
 
     BarneyGlobalState::BarneyGlobalState(ANARIDevice d)
       : helium::BaseGlobalDeviceState(d)
-    {}
+    {
+      PluginInfrastructure::get()->initPlugins();
+    }
 
     BarneyGlobalState::~BarneyGlobalState()
     {
@@ -89,5 +101,88 @@ namespace BARNEY_NS {
       }
     }
 
+    // ==================================================================
+    // plugin infrastructure - should at some point more to a separate
+    // compilation unit
+    // ==================================================================
+
+    PluginInfrastructure *PluginInfrastructure::get()
+    {
+      static PluginInfrastructure *singleton = nullptr;
+      if (!singleton) singleton = new PluginInfrastructure;
+      return singleton;
+    }
+    
+    /*! expects a string of the form '<geomtype>@<pluginname>'. may
+      return null if either the plugin cannot be found (ie, it's not
+      included in the build), or that plugin for some reason cannot
+      create that geometry. */
+    Geometry *PluginInfrastructure::newGeometry(const std::string_view &name,
+                                                BarneyGlobalState *banari)
+    {
+      auto creatorFromPlugin = supportedGeometries[std::string(name)];
+      if (!creatorFromPlugin) return nullptr;
+      
+      return creatorFromPlugin(banari);
+    }
+
+    /*! expects a string of the form '<geomtype>@<pluginname>'. may
+      return null if either the plugin cannot be found (ie, it's not
+      included in the build), or that plugin for some reason cannot
+      create that geometry. */
+    SpatialField *PluginInfrastructure::newSpatialField(const std::string_view &name,
+                                                BarneyGlobalState *banari)
+    {
+      auto creatorFromPlugin = supportedSpatialFields[std::string(name)];
+      if (!creatorFromPlugin) return nullptr;
+
+      return creatorFromPlugin(banari);
+    }
+
+    // called by plugin registry function to declare a new geometry type */
+    void PluginInfrastructure
+    ::exportGeometry(const std::string &typeName,
+                     Geometry*(*creatorFunction)(BarneyGlobalState*))
+    {
+      supportedGeometries[typeName] = creatorFunction;
+    }
+    
+    // called by plugin registry function to declare a new spatial field type */
+    void PluginInfrastructure
+    ::exportSpatialField(const std::string &typeName,
+                         SpatialField*(*creatorFunction)(BarneyGlobalState*))
+    {
+      supportedSpatialFields[typeName] = creatorFunction;
+    }
+
+    /*! we defer initializing the plugins until the first device
+      gets created, to make sure that all other stuff is already
+      loaded and initialized */
+    void PluginInfrastructure::initPlugins()
+    {
+      // in case there's more than one device/barneyglobalstate we
+      // don't want to re-initialze
+      static bool alreadyInitialized = false;
+      if (alreadyInitialized)
+        return;
+      alreadyInitialized = true;
+      
+      for (auto pluginInit : registeredPluginInitFunctions)
+        pluginInit.second();
+    }
+    
+    int PluginInfrastructure::registerPlugin(const std::string &name,
+                                             void (*initFct)())
+    {
+      std::cout << OWL_TERMINAL_LIGHT_BLUE;
+      std::cout << "#banari: globally registering plugin '"
+                << BARNEY_BACKEND_STRING << "::" << name << "'\n";
+      std::cout << OWL_TERMINAL_DEFAULT;
+      
+      PluginInfrastructure *pi = PluginInfrastructure::get();
+      pi->registeredPluginInitFunctions[name] = initFct;
+      return pi->registeredPluginInitFunctions.size();
+    }
+    
   }
 }

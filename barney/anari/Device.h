@@ -8,13 +8,18 @@
 #include "helium/BaseDevice.h"
 #include "anari/BaseDevice.h"
 #include "anari/BarneyGlobalState.h"
+#include <map>
 
 namespace BARNEY_NS {
   namespace anari {
-    
+
     // struct BarneyDevice : public helium::BaseDevice
     struct BarneyDevice : public BARNEY_LIBRARY_NAME::BarneyBaseDevice
     {
+      BarneyDevice();
+      BarneyDevice(ANARILibrary library, const std::string &subType = "default");
+      ~BarneyDevice() override;
+
       // Data Arrays //////////////////////////////////////////////////////////
 
       ANARIArray1D newArray1D(const void *appMemory,
@@ -100,10 +105,6 @@ namespace BARNEY_NS {
       ////////////////////////////////////////////////////////////////////////
       // Helper/other functions and data members
       ////////////////////////////////////////////////////////////////////////
-
-      BarneyDevice();
-      BarneyDevice(ANARILibrary library, const std::string &subType = "default");
-      ~BarneyDevice() override;
 
       virtual BNContext createContext(const std::vector<int> &dataRanks,
                                       const std::vector<int> &gpuIDs);

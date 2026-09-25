@@ -25,8 +25,12 @@
 
 #cmakedefine01 BARNEY_USE_MULTI_SCATTERING
 
+#define BARNEY_STRINGIFY(x) #x
+#define BARNEY_TOSTRING(x) BARNEY_STRINGIFY(x)
+
 #define BARNEY_LIBRARY_NAME barney
 #define BARNEY_BACKEND_NAME @BARNEY_BACKEND_NAME@
+#define BARNEY_BACKEND_STRING BARNEY_TOSTRING(@BARNEY_BACKEND_NAME@)
 #define BARNEY_DEVICE_NAME  barney_@BARNEY_BACKEND_NAME@
 #define BARNEY_NS           barney_@BARNEY_BACKEND_NAME@
 #define BARNEY_NS_OPTIX     barney_optix
@@ -39,5 +43,19 @@
 // the symbol anari/helium expects to find for the creator function
 // that creates an instance of the anari library for this backend.
 #define BARNEY_LIBRARY_ENTRYPOINT_NAME anari_library_@BARNEY_LIBRARY_NAME@_new_library
+
+/*! constructs the symbol name that plugins should use to be
+    findable/initializable when loading geometries, spatial fields,
+    etc, of type '<subtype>@<plugin>`. If any newGeometry(),
+    newSpatialField() etc sees a name like that it first tries to load
+    the plugin '<plugin>' which in turn will try to find a symbol of
+    this name to let this function then register its respective anari
+    types */ 
+#define BARNEY_REGISTER_PLUGIN(name, initFct)                           \
+  const int registerPlugin_barney_@BARNEY_BACKEND_NAME@_##name          \
+  = BARNEY_NS::anari::PluginInfrastructure::registerPlugin(name,initFct);
+
+
+
 
 

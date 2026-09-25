@@ -88,24 +88,28 @@ namespace BARNEY_NS {
       BANARI_TRACK_LEAKS(std::cout << "#banari::Geometry is dying" << std::endl);
     }
 
-    Geometry *Geometry::createInstance(std::string_view subtype,
+    Geometry *Geometry::createInstance(std::string_view subType,
                                        BarneyGlobalState *s)
     {
-      if (subtype == "sphere")
+      if (subType == "sphere")
         return new Sphere(s);
-      if (subtype == "isosurface")
+      if (subType == "isosurface")
         return new IsoSurface(s);
-      if (subtype == "cylinder")
+      if (subType == "cylinder")
         return new Cylinder(s);
-      if (subtype == "cone")
+      if (subType == "cone")
         return new Cone(s);
-      if (subtype == "curve")
+      if (subType == "curve")
         return new Curve(s);
-      if (subtype == "quad")
+      if (subType == "quad")
         return new Quad(s);
-      if (subtype == "triangle")
+      if (subType == "triangle")
         return new Triangle(s);
-      return (Geometry *)new UnknownObject(ANARI_GEOMETRY, subtype, s);
+
+      Geometry *fromPlugin = PluginInfrastructure::get()->newGeometry(subType,s);
+      if (fromPlugin) return fromPlugin;
+      
+      return (Geometry *)new UnknownObject(ANARI_GEOMETRY, subType, s);
     }
 
     void Geometry::setAttributes(BNGeom geom)
@@ -225,7 +229,7 @@ namespace BARNEY_NS {
       Object::markFinalized();
     }
 
-    // Subtypes ///////////////////////////////////////////////////////////////////
+    // SubTypes ///////////////////////////////////////////////////////////////////
 
     // Isosurface //
 

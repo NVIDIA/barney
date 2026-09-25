@@ -383,13 +383,22 @@ namespace BARNEY_NS {
       cuBQL::DeviceMemoryResource memResource;
 
       BARNEY_CUDA_SYNC_CHECK();
-      
+
+# if 1
+      cuBQL::sahBuilder(bvh,
+                        (const cuBQL::box_t<float,3>*)primBounds,
+                        numPrims,
+                        buildConfig,
+                        device->stream,
+                        memResource);
+# else
       cuBQL::gpuBuilder(bvh,
                         (const cuBQL::box_t<float,3>*)primBounds,
                         numPrims,
                         buildConfig,
                         device->stream,
                         memResource);
+# endif
       device->sync();
 #endif
       BARNEY_CUDA_CALL(Free(primBounds));

@@ -141,6 +141,20 @@ set_target_properties(anari_library_barney_${backend}
 )
 
 
+# ==================================================================
+# iterate over all plugin directoried, and ask each plugin to build
+# itself. while doing so each plugin can link itself to
+# `anari_library_barney_${backend}`, thus including itself into the
+# barney being built.
+# ==================================================================
+set(plugin_number 1)
+foreach (plugin_dir ${BARNEY_PLUGIN_DIRS})
+  message("building/adding plugin #${plugin_number}: ${plugin_dir}")
+  add_subdirectory(${plugin_dir} buildDir_plugin_${plugin_number})
+  math(EXPR plugin_number "${plugin_number} + 1")  
+endforeach()
+
+
 
 
 install(

@@ -36,12 +36,6 @@ cmake_policy(SET CMP0079 NEW)
 cmake_policy(SET CMP0076 NEW)
 cmake_policy(SET CMP0063 NEW)
 
-if (NOT (${CMAKE_CURRENT_SOURCE_DIR} STREQUAL ${CMAKE_SOURCE_DIR}))
-  set(BARNEY_IS_SUBPROJECT ON)
-else()
-  set(BARNEY_IS_SUBPROJECT OFF)
-endif()
-
 set(CMAKE_BUILD_TYPE_INIT "Release")
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -55,11 +49,10 @@ endif()
 include(GNUInstallDirs)
 include(CheckLanguage)
 
-if (NOT BARNEY_IS_SUBPROJECT)
-  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
-  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
-  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
-endif()
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -96,6 +89,9 @@ else()
   set(BARNEY_BACKEND_HIP   OFF)
   set(BARNEY_BACKEND_HIPRT OFF)
 endif()
+
+set(BARNEY_PLUGIN_DIRS "" CACHE STRING "List of barney external plugin directories")
+mark_as_advanced(BARNEY_PLUGIN_DIRS)
 
 # ==================================================================
 # configure language(s): in theory we support either cuda, hip, or

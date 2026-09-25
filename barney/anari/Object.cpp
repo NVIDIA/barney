@@ -6,6 +6,7 @@
 // std
 #include <atomic>
 #include <cstdarg>
+#include <set>
 
 namespace BARNEY_NS {
   namespace anari {
@@ -53,14 +54,20 @@ namespace BARNEY_NS {
     // UnknownObject definitions //////////////////////////////////////////////////
 
     UnknownObject::UnknownObject(ANARIDataType type,
-                                 std::string_view subtype,
+                                 std::string_view _subType,
                                  BarneyGlobalState *s)
       : Object(type, s)
     {
+      const std::string subType(_subType);
+      static std::set<std::string> alreadyWarned;
+      if (alreadyWarned.find(subType) != alreadyWarned.end())
+        return;
+      
       reportMessage(ANARI_SEVERITY_WARNING,
                     "banari object type '%s' of subtype '%s' not implemented",
                     anari::toString(type),
-                    std::string(subtype).c_str());
+                    subType.c_str());
+      alreadyWarned.insert(subType);
     }
   
     UnknownObject::~UnknownObject() = default;
