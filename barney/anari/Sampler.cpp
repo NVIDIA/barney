@@ -427,7 +427,8 @@ namespace BARNEY_NS {
     {
       Sampler::commitParameters();
       m_array = getParamObject<helium::Array1D>("array");
-      m_offset = getParam<int>("offset",0);
+      // 'offset' predates the KHR_SAMPLER_PRIMITIVE name
+      m_offset = getParam<int>("inOffset", getParam<int>("offset", 0));
     }
 
     bool PrimitiveSampler::isValid() const

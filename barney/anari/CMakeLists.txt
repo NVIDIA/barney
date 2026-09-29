@@ -59,7 +59,9 @@ if (BARNEY_AUTO_GENERATE_QUERIES)
   endforeach()
 
   file(GLOB_RECURSE API_JSONS ${ANARI_CODE_GEN_ROOT}/api/*.json)
-  file(GLOB_RECURSE MY_JSONS ${CMAKE_CURRENT_SOURCE_DIR}/json/${backend}/*.json)
+  file(GLOB_RECURSE MY_JSONS
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/common/*.json
+    ${CMAKE_CURRENT_SOURCE_DIR}/json/${backend}/*.json)
   
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated_queries.h ${CMAKE_CURRENT_BINARY_DIR}/generated_queries.cpp
@@ -70,6 +72,7 @@ if (BARNEY_AUTO_GENERATE_QUERIES)
     # this will create <bulddir>/generated_queries.h/cpp
     --prefix generated 
     --json ${ANARI_CODE_GEN_ROOT}
+    --json ${CMAKE_CURRENT_SOURCE_DIR}/json/common/
     --json ${CMAKE_CURRENT_SOURCE_DIR}/json/${backend}/
     --device ${CMAKE_CURRENT_SOURCE_DIR}/json/${backend}/barney_device.json
     --namespace barney_${backend}

@@ -1,0 +1,22 @@
+{
+  "info": {
+    "name": "BN_SPATIAL_FIELD_BLOCK_STRUCTURED",
+    "type": "extension",
+    "dependencies": []
+  },
+
+  "objects": [
+    {
+      "type": "ANARI_SPATIAL_FIELD",
+      "name": "blockStructured",
+      "description": "block-structured AMR spatial field",
+      "parameters": [
+        { "name": "name", "types": ["ANARI_STRING"], "tags": [], "description": "optional object name" },
+        { "name": "block.origin", "types": ["ANARI_ARRAY1D"], "elementType": ["ANARI_INT32_VEC3"], "tags": ["required"], "description": "per-block lower corner, in that block's level coordinates" },
+        { "name": "block.dimensions", "types": ["ANARI_ARRAY1D"], "elementType": ["ANARI_INT32_VEC3"], "tags": ["required"], "description": "per-block cell counts" },
+        { "name": "block.level", "types": ["ANARI_ARRAY1D"], "elementType": ["ANARI_INT32"], "tags": ["required"], "description": "per-block refinement level" },
+        { "name": "data", "types": ["ANARI_ARRAY1D"], "elementType": ["ANARI_UFIXED8", "ANARI_FLOAT32"], "tags": ["required"], "description": "scalars of all blocks, concatenated in block order" }
+      ]
+    }
+  ]
+}
