@@ -15,7 +15,7 @@ namespace BARNEY_NS {
       m_position = getParam<math::float3>("position", math::float3(0.f, 0.f, 0.f));
       m_edge1 = getParam<math::float3>("edge1", math::float3(1.f, 0.f, 0.f));
       m_edge2 = getParam<math::float3>("edge2", math::float3(0.f, 1.f, 0.f));
-      m_intensity = getParam<float>("intensity", NAN);
+      m_intensity = getParam<float>("intensity", 1.f);
     }
 
     const char *QuadLight::bnSubtype() const

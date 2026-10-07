@@ -32,10 +32,20 @@
       "khr_frame_channel_primitive_id",
       "khr_frame_channel_object_id",
       "khr_frame_channel_instance_id",
+      "khr_frame_channel_normal",
       "khr_renderer_ambient_light",
       "khr_renderer_background_color",
       "khr_renderer_background_image",
-      "khr_sampler_imagexd_clamp_to_border"
+      "khr_sampler_imagexd_clamp_to_border",
+      "khr_camera_omnidirectional",
+      "khr_geometry_isosurface",
+      "khr_light_quad",
+      "khr_renderer_denoise",
+      "khr_sampler_primitive",
+      "khr_spatial_field_nanovdb",
+      "bn_frame_channel_motion",
+      "bn_spatial_field_block_structured",
+      "bn_volume_principled"
     ]
   },
   "objects": [
@@ -59,15 +69,6 @@
           "default": 1024,
           "minimum": 0,
           "description": "stop refining the frame after this number of samples"
-        },
-        {
-          "name": "denoise",
-          "types": [
-            "ANARI_BOOL"
-          ],
-          "tags": [],
-          "default": true,
-          "description": "denoise image"
         },
         {
           "name": "fadeOutDenoiser",

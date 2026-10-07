@@ -124,6 +124,8 @@ namespace BARNEY_NS {
           requiredChannels |= BN_FB_INSTID;
         if (m_channelTypes.normal == ANARI_FLOAT32_VEC3)
           requiredChannels |= BN_FB_NORMAL;
+        if (m_channelTypes.motion == ANARI_FLOAT32_VEC2)
+          requiredChannels |= BN_FB_MOTION;
 
         if (m_bnFrameBuffer) {
           bnSet1i(m_bnFrameBuffer, "denoise", m_renderer->denoise() ? 1 : 0);
