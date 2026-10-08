@@ -6,8 +6,14 @@
 
 #include "rtcore/cudaCommon/cuda_to_hip.h"
 
+#if defined(__HIP_PLATFORM_AMD__) || defined(USE_HIP) || defined(__HIPCC__)
+# define BARNEY_GPU_RUNTIME "HIP"
+#else
+# define BARNEY_GPU_RUNTIME "CUDA"
+#endif
+
 #ifdef NDEBUG
-#define BARNEY_RAISE(MSG) throw std::runtime_error("fatal barney cuda error ... ")
+#define BARNEY_RAISE(MSG) throw std::runtime_error("fatal barney " BARNEY_GPU_RUNTIME " error ... ")
 #else
 #define BARNEY_RAISE(MSG) { std::cerr << MSG << std::endl; assert(0); }
 #endif
@@ -18,9 +24,10 @@
     if (rc != cudaSuccess) {                                            \
       printf("error code %i\n",rc); fflush(0);                          \
       fprintf(stderr,                                                   \
-              "CUDA call (%s) failed with code %d (line %d): %s\n",     \
+              BARNEY_GPU_RUNTIME                                   \
+              " call (%s) failed with code %d (line %d): %s\n",       \
               #call, rc, __LINE__, cudaGetErrorString(rc));             \
-      BARNEY_RAISE("fatal cuda error");                                 \
+      BARNEY_RAISE("fatal " BARNEY_GPU_RUNTIME " error");         \
     }                                                                   \
   }
 
@@ -31,13 +38,15 @@
     cudaError_t rc = call;                                              \
     if(rc != cudaSuccess) {                                             \
       if (where)                                                        \
-        fprintf(stderr, "at %s: CUDA call (%s) "                        \
+        fprintf(stderr, "at %s: " BARNEY_GPU_RUNTIME              \
+                " call (%s) "                                          \
                 "failed with code %d (line %d): %s\n",                  \
                 where,#call, rc, __LINE__, cudaGetErrorString(rc));     \
       fprintf(stderr,                                                   \
-              "CUDA call (%s) failed with code %d (line %d): %s\n",     \
+              BARNEY_GPU_RUNTIME                                   \
+              " call (%s) failed with code %d (line %d): %s\n",       \
               #call, rc, __LINE__, cudaGetErrorString(rc));             \
-      BARNEY_RAISE("fatal cuda error");                                 \
+      BARNEY_RAISE("fatal " BARNEY_GPU_RUNTIME " error");         \
     }                                                                   \
   }
 
@@ -49,7 +58,7 @@
     if (rc != cudaSuccess) {                                    \
       fprintf(stderr, "error (%s: line %d): %s\n",              \
               __FILE__, __LINE__, cudaGetErrorString(rc));      \
-      BARNEY_RAISE("fatal cuda error");                         \
+      BARNEY_RAISE("fatal " BARNEY_GPU_RUNTIME " error"); \
     }                                                           \
   }
 
@@ -58,7 +67,8 @@
     cudaError_t rc = call;                                              \
     if (rc != cudaSuccess) {                                            \
       fprintf(stderr,                                                   \
-              "CUDA call (%s) failed with code %d (line %d): %s\n",     \
+              BARNEY_GPU_RUNTIME                                   \
+              " call (%s) failed with code %d (line %d): %s\n",       \
               #call, rc, __LINE__, cudaGetErrorString(rc));             \
       exit(2);                                                          \
     }                                                                   \
@@ -71,11 +81,13 @@
     cudaError_t rc = call;                                              \
     if(rc != cudaSuccess) {                                             \
       if (where)                                                        \
-        fprintf(stderr, "at %s: CUDA call (%s) "                        \
+        fprintf(stderr, "at %s: " BARNEY_GPU_RUNTIME              \
+                " call (%s) "                                          \
                 "failed with code %d (line %d): %s\n",                  \
                 where,#call, rc, __LINE__, cudaGetErrorString(rc));     \
       fprintf(stderr,                                                   \
-              "CUDA call (%s) failed with code %d (line %d): %s\n",     \
+              BARNEY_GPU_RUNTIME                                   \
+              " call (%s) failed with code %d (line %d): %s\n",       \
               #call, rc, __LINE__, cudaGetErrorString(rc));             \
       exit(2);                                                          \
     }                                                                   \
