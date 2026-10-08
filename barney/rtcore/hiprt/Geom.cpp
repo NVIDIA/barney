@@ -7,8 +7,8 @@
 #include "rtcore/hiprt/Geom.h"
 #include "rtcore/hiprt/GeomType.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     Geom::Geom(GeomType *gt)
       : gt(gt), data(gt->sizeOfDD)

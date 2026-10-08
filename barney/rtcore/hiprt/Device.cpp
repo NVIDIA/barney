@@ -14,8 +14,15 @@
 #include <hiprt/hiprt.h>
 #include <stdexcept>
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
+
+    int physicalDeviceCount()
+    {
+      int count = 0;
+      BARNEY_CUDA_CALL(GetDeviceCount(&count));
+      return count;
+    }
 
     static void hiprtCheck(hiprtError e, const char *where)
     {
@@ -23,10 +30,10 @@ namespace rtc {
         throw std::runtime_error(std::string("HIPRT error in ")+where
                                  +" code "+std::to_string((int)e));
     }
-#define HIPRT_CALL(call,where) rtc::hiprt::hiprtCheck(call,where)
+#define HIPRT_CALL(call,where) rtc::hiprtCheck(call,where)
 
     Device::Device(int physicalGPU)
-      : cuda_common::Device(physicalGPU)
+      : CudaDeviceBase(physicalGPU)
     {
       SetActiveGPU forDuration(this);
 

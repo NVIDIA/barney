@@ -8,8 +8,8 @@
 
 #include "rtcore/cudaCommon/Device.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     struct Geom;
     struct Device;
@@ -24,16 +24,16 @@ namespace rtc {
     typedef void (*CHProg)(TraceInterface &ti);
 
     struct GeomType {
-      GeomType(cuda_common::Device *device, size_t sizeOfDD);
+      GeomType(CudaDeviceBase *device, size_t sizeOfDD);
       virtual ~GeomType() = default;
       virtual Geom *createGeom() = 0;
 
-      cuda_common::Device *const device;
+      CudaDeviceBase *const device;
       size_t  const sizeOfDD;
     };
 
     struct UserGeomType : public GeomType {
-      UserGeomType(cuda_common::Device *device,
+      UserGeomType(CudaDeviceBase *device,
                    size_t sizeOfDD,
                    BoundsKernel bounds,
                    IntersectProg intersect,
@@ -49,7 +49,7 @@ namespace rtc {
     };
 
     struct TrianglesGeomType : public GeomType {
-      TrianglesGeomType(cuda_common::Device *device,
+      TrianglesGeomType(CudaDeviceBase *device,
                         size_t sizeOfDD,
                         AHProg ah,
                         CHProg ch);

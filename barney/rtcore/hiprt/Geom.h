@@ -9,8 +9,8 @@
 #include "rtcore/hiprt/Buffer.h"
 #include "rtcore/hiprt/GeomType.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     struct GeomType;
 

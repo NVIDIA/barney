@@ -33,8 +33,8 @@
 # include <hiprt/hiprt_device.h>
 #endif
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     inline __device__
     bool TraceInterface::intersectTriangle(const vec3f v0,
@@ -259,13 +259,13 @@ namespace rtc {
 #if RTC_DEVICE_CODE
 # define RTC_HIPRT_TRACEKERNEL(name,Class)                              \
   __global__ void __launch_bounds__(256)                               \
-  rtc_hiprt_run_##name(::rtc::hiprt::TraceInterface ti)                \
+  rtc_hiprt_run_##name(::BARNEY_NS::rtc::TraceInterface ti)                \
   {                                                                     \
     Class::run(ti);                                                     \
   }
 #else
 # define RTC_HIPRT_TRACEKERNEL(name,Class)                              \
-  __global__ void rtc_hiprt_run_##name(::rtc::hiprt::TraceInterface ti);
+  __global__ void rtc_hiprt_run_##name(::BARNEY_NS::rtc::TraceInterface ti);
 #endif
 
 #define RTC_EXPORT_TRACE2D(name,Class)                                  \
@@ -276,9 +276,9 @@ namespace rtc {
   {                                                                     \
     vec2i bs(16,16);                                                    \
     vec2i nb = divRoundUp(dims,bs);                                     \
-    ::rtc::hiprt::TraceInterface ti;                                    \
+    ::BARNEY_NS::rtc::TraceInterface ti;                                    \
     ti.lpData = lpData;                                                 \
-    ti.hiprtFuncTableHandle = rtc::hiprt::getFuncTable(device);         \
+    ti.hiprtFuncTableHandle = rtc::getFuncTable(device);         \
     rtc_hiprt_run_##name                                               \
       <<<dim3{(unsigned)nb.x,(unsigned)nb.y,1u},                       \
          dim3{(unsigned)bs.x,(unsigned)bs.y,1u},                       \

@@ -8,14 +8,14 @@
 
 #include "rtcore/cudaCommon/Device.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     // a plain device buffer; identical to the cuda backend's Buffer but bound to
-    // cuda_common::Device so the hiprt and cuda backends do not share a Device
+    // CudaDeviceBase so the hiprt and cuda backends do not share a Device
     // type (each backend owns its rtc::Device).
     struct Buffer {
-      Buffer(cuda_common::Device *device,
+      Buffer(CudaDeviceBase *device,
              size_t numBytes,
              const void *initValues);
       virtual ~Buffer();
@@ -24,7 +24,7 @@ namespace rtc {
       void upload(const void *data, size_t numBytes, size_t offset=0);
       void resize(size_t newNumBytes);
       void *d_data = 0;
-      cuda_common::Device *const device;
+      CudaDeviceBase *const device;
     };
 
   }

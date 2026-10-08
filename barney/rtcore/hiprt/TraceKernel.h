@@ -8,8 +8,8 @@
 
 #include "rtcore/cudaCommon/Device.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     struct Device;
 
@@ -36,8 +36,8 @@ namespace rtc {
                                vec2i dims,                              \
                                const void *lpData);                     \
                                                                         \
-  ::rtc::TraceKernel2D *createTrace_##name(rtc::Device *device)         \
+  ::BARNEY_NS::rtc::TraceKernel2D *createTrace_##name(rtc::Device *device)         \
   {                                                                     \
-    return new ::rtc::hiprt::TraceKernel2D                              \
+    return new ::BARNEY_NS::rtc::TraceKernel2D                              \
       (device,sizeOfLP,rtc_hiprt_launch_##name);                        \
   }
