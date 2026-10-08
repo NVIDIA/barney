@@ -7,13 +7,19 @@
 # ------------------------------------------------------------------
 
 # ----------- enable/disable different devices we can build
-option(BARNEY_USE_HIP        "Use HIP instead of CUDA"     OFF)
 option(BARNEY_BACKEND_CPU    "Build Embree/CPU Backend"    OFF)
 option(BARNEY_BACKEND_CUDA   "Build (native) CUDA Backend" OFF)
-option(BARNEY_BACKEND_OPTIX  "Build OptiX Backend"         ON)
+option(BARNEY_BACKEND_OPTIX  "Build OptiX Backend"         OFF)
 option(BARNEY_BACKEND_HIP    "Build HIP Backend"           OFF)
 option(BARNEY_BACKEND_HIPRT  "Build HIPRT Backend"         OFF)
 option(BARNEY_MPI            "Enable MPI Support"          OFF)
+
+if (NOT (BARNEY_BACKEND_CPU OR BARNEY_BACKEND_CUDA 
+         OR BARNEY_BACKEND_OPTIX OR BARNEY_BACKEND_HIP OR BARNEY_BACKEND_HIPRT))
+  message(FATAL_ERROR "No back-end selected, nothing will be built."
+                  "Enable CMake options BARNEY_BACKEND_CPU, BARNEY_BACKEND_CUDA, "
+                  "BARNEY_BACKEND_OPTIX, BARNEY_BACKEND_HIP, BARNEY_BACKEND_HIPRT")
+endif()
 
 # ------------------------------------------------------------------
 # cmake project/output config
@@ -76,18 +82,16 @@ option(BARNEY_AUTO_GENERATE_QUERIES "auto-generate the anari device queries"
 # check if there's any compile language conflicts in the
 # backends. currently we can't build both hip and cuda at the same
 # time (mostly due to this meaning we'd have to build two different
-# versions of cuBQL within the same cmake build dir), so let's disable
-# the respective backends based on whether hip is or isn't enabled
+# versions of cuBQL within the same cmake build dir).
 # ==================================================================
-mark_as_advanced(BARNEY_USE_HIP)
-if (BARNEY_USE_HIP)
+if ((BARNEY_BACKEND_HIP OR BARNEY_BACKEND_HIPRT) AND (BARNEY_BACKEND_OPTIX OR BARNEY_BACKEND_CUDA))
+  message(FATAL_ERROR "Cannot enable both HIP and CUDA back-end in the same build directory")
+endif()
+
+if (BARNEY_BACKEND_HIP OR BARNEY_BACKEND_HIPRT)
   set(CUBQL_USE_HIP ON)
-  set(BARNEY_BACKEND_OPTIX OFF)
-  set(BARNEY_BACKEND_CUDA  OFF)
-else()
+elseif ((BARNEY_BACKEND_OPTIX OR BARNEY_BACKEND_CUDA))
   set(CUBQL_USE_HIP OFF)
-  set(BARNEY_BACKEND_HIP   OFF)
-  set(BARNEY_BACKEND_HIPRT OFF)
 endif()
 
 set(BARNEY_PLUGIN_DIRS "" CACHE STRING "List of barney external plugin directories")
