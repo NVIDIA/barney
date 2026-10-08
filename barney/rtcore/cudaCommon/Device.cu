@@ -116,6 +116,11 @@ namespace BARNEY_NS {
       BARNEY_CUDA_SYNC_CHECK();
       
       int saved = setActive();
+#ifdef USE_HIP
+      /* HIP: Raise the device stack size,
+      which is too low by default, and can overflow.*/
+      hipDeviceSetLimit(hipLimitStackSize, 16*1024);
+#endif
       BARNEY_CUDA_CALL(StreamCreateWithFlags(&stream,cudaStreamNonBlocking));
       // BARNEY_CUDA_CALL(StreamCreate(&stream));
       restoreActive(saved);
