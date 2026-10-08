@@ -256,7 +256,7 @@ namespace BARNEY_NS {
     {
       BANARI_TRACK_LEAKS(std::cout << "#banari: ~BarneyDevice is deconstructing"
                          << std::endl);
-      auto &state = *deviceState();
+      auto &state = *deviceState(false);
       state.commitBuffer.clear();
       reportMessage(ANARI_SEVERITY_DEBUG, "destroying barney device (%p)", this);
     }

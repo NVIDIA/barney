@@ -2,6 +2,8 @@
 // CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <bit>
+
 #include "native/fb/FrameBuffer.h"
 #include "native/fb/TiledFB.h"
 #include "native/render/World.h"
@@ -607,7 +609,7 @@ namespace BARNEY_NS {
       // contribution at this hit point (if any), and generate secondary
       // ray and shadow ray (if applicable), with proper weights.
       // ==================================================================    
-      Random random(ray.rngSeed,(const uint32_t&)ray.tMax);//rayID,ray.rngSeed);
+      Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));//rayID,ray.rngSeed);
       // Random random(ray.rngSeed.next((const uint32_t&)ray.tMax));//rayID,ray.rngSeed);
       const PackedBSDF bsdf = ray.getBSDF();
 
@@ -720,7 +722,7 @@ namespace BARNEY_NS {
              /* to light */ls.direction,
              /* length   */ls.distance * (1.f-2.f*offsetEpsilon));
           shadowRay.rngSeed = ray.rngSeed;// + 1; random();
-          ray.rngSeed.next((const uint32_t&)ray.tMax);
+          ray.rngSeed.next(std::bit_cast<uint32_t>(ray.tMax));
           // Random rng(ray.rngSeed.next(hash(ti.getRTCInstanceIndex(),
           //                        ti.getGeometryIndex(),
           //                        ti.getPrimitiveIndex())));
