@@ -6,12 +6,11 @@
 
 #include "rtcore/hiprt/Buffer.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
-    using cuda_common::SetActiveGPU;
 
-    Buffer::Buffer(cuda_common::Device *device,
+    Buffer::Buffer(CudaDeviceBase *device,
                    size_t numBytes,
                    const void *initValues)
       : device(device)

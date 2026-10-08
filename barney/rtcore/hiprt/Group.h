@@ -10,8 +10,8 @@
 #include "rtcore/hiprt/Geom.h"
 #include <hiprt/hiprt.h>
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     struct Device;
 

@@ -42,7 +42,7 @@ HIPRT_DEVICE bool intersectFunc(uint32_t          /*geomType*/,
   // prim exactly once and fold the hit. Returns false unconditionally so HIPRT
   // discards this leaf and keeps enumerating (the filter is never called for
   // custom geoms, so the hit-writing intersect runs only once per prim).
-  auto *ti = (::rtc::hiprt::TraceInterface *)payload;
+  auto *ti = (::BARNEY_NS::rtc::TraceInterface *)payload;
   return ti->hiprtIntersectThunk(hit);
 }
 
@@ -59,13 +59,13 @@ HIPRT_DEVICE bool filterFunc(uint32_t          /*geomType*/,
   // the closest non-rejected one ourselves. This is the record-and-ignore
   // filter pattern. (Custom geoms fold in the intersect thunk and never reach
   // here, so their hit-writing intersect runs only once per prim.)
-  auto *ti = (::rtc::hiprt::TraceInterface *)payload;
+  auto *ti = (::BARNEY_NS::rtc::TraceInterface *)payload;
   ti->hiprtFilterThunk(hit);
   return true;
 }
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     // ------------------------------------------------------------------
     // a process-wide 1x1 HIPRT func table; barney carries all per-geom state in

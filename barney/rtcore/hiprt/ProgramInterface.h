@@ -14,10 +14,9 @@
 # include <hiprt/hiprt_device.h>
 #endif
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
-    using rtc::cuda_common::ComputeInterface;
 
     struct Device;
 
@@ -160,7 +159,7 @@ namespace rtc {
                                 owl::common::box3f &result,             \
                                 int primID)                             \
   {                                                                     \
-    ::rtc::hiprt::TraceInterface ti;                                    \
+    ::BARNEY_NS::rtc::TraceInterface ti;                                    \
     type::bounds(ti,geom,result,primID);                                \
   }                                                                     \
   __global__ void                                                       \
@@ -177,7 +176,7 @@ namespace rtc {
       _rtc_hiprt_boundsFunc__##name(geom,boundsArray[primID],primID);   \
   }                                                                     \
   __global__                                                            \
-  void rtc_hiprt_writeAddresses_##name(rtc::hiprt::Geom::SBTHeader *h)  \
+  void rtc_hiprt_writeAddresses_##name(rtc::Geom::SBTHeader *h)  \
   {                                                                     \
     h->ah = has_ah?type::anyHit:0;                                      \
     h->ch = has_ch?type::closestHit:0;                                  \
@@ -190,7 +189,7 @@ namespace rtc {
                                       owl::common::box3f *boundsArray,   \
                                       int numPrims);                     \
   __global__                                                            \
-  void rtc_hiprt_writeAddresses_##name(rtc::hiprt::Geom::SBTHeader *h);
+  void rtc_hiprt_writeAddresses_##name(rtc::Geom::SBTHeader *h);
 #endif
 
 #define RTC_EXPORT_USER_GEOM(name,DD,type,has_ah,has_ch)                \
@@ -207,17 +206,17 @@ namespace rtc {
     _rtc_hiprt_boundsFuncKernel__##name<<<nb,bs,0,device->stream>>>     \
       (geom,boundsArray,numPrims);                                      \
   }                                                                     \
-  rtc::hiprt::GeomType *createGeomType_##name(rtc::Device *device)      \
+  rtc::GeomType *createGeomType_##name(rtc::Device *device)      \
   {                                                                     \
-    ::rtc::hiprt::SetActiveGPU forDuration(device);                     \
-    rtc::hiprt::Geom::SBTHeader *h;                                     \
+    ::BARNEY_NS::rtc::SetActiveGPU forDuration(device);                     \
+    rtc::Geom::SBTHeader *h;                                     \
     BARNEY_CUDA_CALL(Malloc((void **)&h,sizeof(*h)));                   \
     rtc_hiprt_writeAddresses_##name<<<1,32>>>(h);                       \
     device->sync();                                                     \
-    rtc::hiprt::Geom::SBTHeader hh;                                     \
+    rtc::Geom::SBTHeader hh;                                     \
     BARNEY_CUDA_CALL(Memcpy(&hh,h,sizeof(hh),cudaMemcpyDefault));       \
     BARNEY_CUDA_CALL(Free(h));                                          \
-    return new rtc::hiprt::UserGeomType                                 \
+    return new rtc::UserGeomType                                 \
       (device, sizeof(DD), _rtc_hiprt_writeBounds__##name,             \
        hh.user.intersect, hh.ah, hh.ch);                               \
   }
@@ -228,7 +227,7 @@ namespace rtc {
 #if RTC_DEVICE_CODE
 # define RTC_HIPRT_TRIANGLES_WRITEADDR(name,Programs,has_ah,has_ch)     \
   __global__                                                            \
-  void rtc_hiprt_writeAddresses_##name(rtc::hiprt::Geom::SBTHeader *h)  \
+  void rtc_hiprt_writeAddresses_##name(rtc::Geom::SBTHeader *h)  \
   {                                                                     \
     h->ah = has_ah?Programs::anyHit:0;                                  \
     h->ch = has_ch?Programs::closestHit:0;                              \
@@ -236,20 +235,20 @@ namespace rtc {
 #else
 # define RTC_HIPRT_TRIANGLES_WRITEADDR(name,Programs,has_ah,has_ch)     \
   __global__                                                            \
-  void rtc_hiprt_writeAddresses_##name(rtc::hiprt::Geom::SBTHeader *h);
+  void rtc_hiprt_writeAddresses_##name(rtc::Geom::SBTHeader *h);
 #endif
 
 #define RTC_EXPORT_TRIANGLES_GEOM(name,DD,Programs,has_ah,has_ch)       \
   RTC_HIPRT_TRIANGLES_WRITEADDR(name,Programs,has_ah,has_ch)            \
-  rtc::hiprt::GeomType *createGeomType_##name(rtc::Device *device)      \
+  rtc::GeomType *createGeomType_##name(rtc::Device *device)      \
   {                                                                     \
-    ::rtc::hiprt::SetActiveGPU forDuration(device);                     \
-    rtc::hiprt::Geom::SBTHeader *h;                                     \
+    ::BARNEY_NS::rtc::SetActiveGPU forDuration(device);                     \
+    rtc::Geom::SBTHeader *h;                                     \
     BARNEY_CUDA_CALL(Malloc((void **)&h,sizeof(*h)));                   \
     rtc_hiprt_writeAddresses_##name<<<1,32>>>(h);                       \
     device->sync();                                                     \
-    rtc::hiprt::Geom::SBTHeader hh;                                     \
+    rtc::Geom::SBTHeader hh;                                     \
     BARNEY_CUDA_CALL(Memcpy(&hh,h,sizeof(hh),cudaMemcpyDefault));       \
-    return new rtc::hiprt::TrianglesGeomType                            \
+    return new rtc::TrianglesGeomType                            \
       (device, sizeof(DD), hh.ah, hh.ch);                              \
   }

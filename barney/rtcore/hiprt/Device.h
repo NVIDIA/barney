@@ -11,14 +11,15 @@
 // host-side HIPRT API; the device-side traversal lives in TraceInterface.h
 #include <hiprt/hiprt.h>
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
-    using cuda_common::SetActiveGPU;
+    int physicalDeviceCount();
+
 
     // forward decls; the geometry/SBT/program data model is backend-generic
     // compute (no OptiX, no HIPRT) and lives in this backend's Geom/GeomType/
-    // Buffer (cuda_common::Device-based). Only BVH build + ray traversal differ
+    // Buffer (CudaDeviceBase-based). Only BVH build + ray traversal differ
     // (HIPRT here, the cuBQL software walk in the cuda backend), so only Group
     // and the device-side TraceInterface are HIPRT-specific.
     struct Buffer;
@@ -32,24 +33,14 @@ namespace rtc {
     struct Denoiser;
     struct TraceKernel2D;
 
-    using rtc::cuda_common::Texture;
-    using rtc::cuda_common::TextureData;
 
-    using cuda_common::float2;
-    using cuda_common::float3;
-    using cuda_common::float4;
-    using cuda_common::int2;
-    using cuda_common::int3;
-    using cuda_common::int4;
-    using cuda_common::load;
-    using cuda_common::TextureObject;
 
-    struct Device : public cuda_common::Device {
+    struct Device : public CudaDeviceBase {
       Device(int physicalGPU);
       virtual ~Device();
 
       std::string toString() const
-      { return "rtc::hiprt::Device(physical="+std::to_string(physicalID)+")"; }
+      { return "rtc::Device(physical="+std::to_string(physicalID)+")"; }
 
       /*! the HIPRT context, created over this Device's HIP device + stream;
           shared by every Group's BVH build and the trace kernels so they see

@@ -21,8 +21,8 @@
 #include <stdexcept>
 #include <cstring>
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
     static void hiprtCheck(hiprtError e, const char *where)
     {
@@ -30,7 +30,7 @@ namespace rtc {
         throw std::runtime_error(std::string("HIPRT error in ")+where
                                  +" code "+std::to_string((int)e));
     }
-#define HC(call) rtc::hiprt::hiprtCheck(call,#call)
+#define HC(call) rtc::hiprtCheck(call,#call)
 
     // ------------------------------------------------------------------
     Group::Group(Device *device) : device(device) {}

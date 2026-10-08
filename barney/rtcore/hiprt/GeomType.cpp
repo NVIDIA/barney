@@ -7,14 +7,14 @@
 #include "rtcore/hiprt/GeomType.h"
 #include "rtcore/hiprt/Geom.h"
 
-namespace rtc {
-  namespace hiprt {
+namespace BARNEY_NS {
+  namespace rtc {
 
-    GeomType::GeomType(cuda_common::Device *device, size_t sizeOfDD)
+    GeomType::GeomType(CudaDeviceBase *device, size_t sizeOfDD)
       : device(device), sizeOfDD(sizeOfDD)
     {}
 
-    UserGeomType::UserGeomType(cuda_common::Device *device,
+    UserGeomType::UserGeomType(CudaDeviceBase *device,
                                size_t sizeOfDD,
                                BoundsKernel bounds,
                                IntersectProg intersect,
@@ -24,7 +24,7 @@ namespace rtc {
         bounds(bounds), intersect(intersect), ah(ah), ch(ch)
     {}
 
-    TrianglesGeomType::TrianglesGeomType(cuda_common::Device *device,
+    TrianglesGeomType::TrianglesGeomType(CudaDeviceBase *device,
                                          size_t sizeOfDD,
                                          AHProg ah,
                                          CHProg ch)
