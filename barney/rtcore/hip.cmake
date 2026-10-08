@@ -75,7 +75,7 @@ function(rtc_build_device_sources libname)
   target_compile_definitions(${libname} PRIVATE
     -DBARNEY_DEVICE_PROGRAM=1)
   target_link_libraries(${libname}
-    barney_rtc_hip
+    barney_rtc_${backend}
     barney_rtc_cudaCommon_${backend}
     barney_config_${backend}
     )
@@ -83,8 +83,8 @@ function(rtc_build_device_sources libname)
 endfunction()
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/cudaCommon build_cudaCommon_hip)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/hip        build_cuda_hip)
-
-
-
-
+if (backend STREQUAL "hiprt")
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/hiprt build_hiprt)
+else()
+  add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/cuda build_cuda_hip)
+endif()
