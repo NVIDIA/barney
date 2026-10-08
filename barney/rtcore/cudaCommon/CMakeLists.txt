@@ -8,7 +8,7 @@
 # t have a different cmake target for each 'isntantiation' of this
 # code.
 
-if (BARNEY_USE_HIP)
+if (backend STREQUAL "hip" OR backend STREQUAL "hiprt")
   set(CMAKE_HIP_PLATFORM amd)
   enable_language(HIP)
 else()
@@ -25,7 +25,7 @@ target_link_libraries(barney_rtc_cudaCommon_${backend} PUBLIC
   $<BUILD_INTERFACE:barney_config_${backend}>
   cuBQL
 )
-if (BARNEY_USE_HIP)
+if (backend STREQUAL "hip" OR backend STREQUAL "hiprt")
   target_compile_definitions(barney_rtc_cudaCommon_${backend} PUBLIC
     -DUSE_HIP=1 -D__HIP_PLATFORM_AMD__=1
   )
