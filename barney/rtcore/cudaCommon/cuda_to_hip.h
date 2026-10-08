@@ -100,6 +100,10 @@ using cudaTextureReadMode    = hipTextureReadMode;
 #define cudaAddressModeBorder      hipAddressModeBorder
 #define cudaAddressModeMirror      hipAddressModeMirror
 
+#define cudaCreateChannelDescHalf1 hipCreateChannelDescHalf1
+#define cudaCreateChannelDescHalf2 hipCreateChannelDescHalf2
+#define cudaCreateChannelDescHalf4 hipCreateChannelDescHalf4
+
 #else
 # include <cuda_runtime.h>
 #endif
