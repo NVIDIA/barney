@@ -15,7 +15,13 @@ namespace BARNEY_NS {
     struct AnariPBR : public HostMaterial {
       struct DD {
 #if RTC_DEVICE_CODE
+#ifdef __HIPCC__
+        // Work around AMDGPU compiler return-address bug by forcing inlining
+        // Possibly related to https://github.com/llvm/llvm-project/issues/224205
+        __forceinline__ __rtc_device
+#else
        inline __rtc_device
+#endif
         PackedBSDF createBSDF(const HitAttributes &hitData,
                               const Sampler::DD *samplers,
                               bool dbg) const;
@@ -95,7 +101,11 @@ namespace BARNEY_NS {
     };
       
 #if RTC_DEVICE_CODE
+#ifdef USE_HIP
+    __forceinline__ __rtc_device
+#else
     inline __rtc_device
+#endif
     PackedBSDF AnariPBR::DD::createBSDF(const HitAttributes &hitData,
                                         const Sampler::DD *samplers,
                                         bool dbg) const
