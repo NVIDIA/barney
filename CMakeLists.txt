@@ -139,12 +139,12 @@ macro(rtc_configure_source)
   foreach(src ${ARGN})
     get_filename_component(ext "${src}" EXT)
     if ((${ext} STREQUAL ".cu") OR (${ext} STREQUAL ".dev.cu"))
-      if (BARNEY_HAVE_CUDA)
+      if (backend STREQUAL "cuda" OR backend STREQUAL "optix")
         set_source_files_properties(${src} PROPERTIES
           LANGUAGE CUDA
           COMPILE_OPTIONS "--expt-relaxed-constexpr;--extended-lambda;-rdc=true"
         )
-      elseif (BARNEY_HAVE_HIP)
+      elseif (backend STREQUAL "hip" OR backend STREQUAL "hiprt")
         set_source_files_properties(${src} PROPERTIES
           LANGUAGE HIP
           COMPILE_OPTIONS "-fgpu-rdc"
