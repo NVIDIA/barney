@@ -2,6 +2,8 @@
 // CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#include <bit>
+
 #include "native/geometry/Triangles.h"
 
 RTC_DECLARE_GLOBALS(BARNEY_NS::native::OptixGlobals);
@@ -123,9 +125,9 @@ namespace BARNEY_NS {
         const float coverage
           = material.coverage(hitData,world.samplers,dbg);
         if (coverage < 1.f) {
-          ray.rngSeed.next((const uint32_t&)osP.x);
-          ray.rngSeed.next((const uint32_t&)osP.y);
-          ray.rngSeed.next((const uint32_t&)osP.z);
+          ray.rngSeed.next(std::bit_cast<uint32_t>(osP.x));
+          ray.rngSeed.next(std::bit_cast<uint32_t>(osP.y));
+          ray.rngSeed.next(std::bit_cast<uint32_t>(osP.z));
           Random rng(ray.rngSeed,290374u);
           if (rng() > coverage) {
             ti.ignoreIntersection();
