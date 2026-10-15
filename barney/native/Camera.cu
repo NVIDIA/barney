@@ -75,6 +75,10 @@ namespace BARNEY_NS {
     float fovy      = 60.f;
     float focusDistance  = 0.f;
     float apertureRadius = 0.f;
+    /*! allows for specifying that ray should originate
+      'minumdistance' units away from the actual lens center,
+      default is 0 */
+    float nearClip = 0.f;
   };
   
   bool PerspectiveCamera::set1f(const std::string &member, const float &value)
@@ -91,6 +95,10 @@ namespace BARNEY_NS {
     }
     if (member == "focusDistance") {
       focusDistance = value;
+      return true;
+    }
+    if (member == "nearClip") {
+      nearClip = value;
       return true;
     }
     if (member == "fovy") {
@@ -138,6 +146,7 @@ namespace BARNEY_NS {
     dd.perspective.lens_00 = from;
     dd.perspective.focusDistance = focusDistance;
     dd.perspective.apertureRadius = apertureRadius;
+    dd.perspective.nearClip = nearClip;
     commitBaseDeviceData();
   }
     

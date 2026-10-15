@@ -53,6 +53,7 @@ namespace BARNEY_NS {
       float m_fovy{30.f};
       float m_aspect{1.f};
       float m_focusDistance = 0.f;
+      float m_nearClip = 0.f;
       float m_apertureRadius = 0.f;
     };
 

@@ -57,6 +57,10 @@ namespace BARNEY_NS {
             float apertureRadius;
             /* distance to focal plane, for DOF */
             float focusDistance;
+            /*! allows for specifying that ray should originate
+              'minumdistance' units away from the actual lens center,
+              default is 0 */
+            float nearClip;
           } perspective;
           struct {
             vec3f org_00;

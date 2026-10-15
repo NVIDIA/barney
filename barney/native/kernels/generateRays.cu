@@ -137,6 +137,7 @@ namespace BARNEY_NS {
           ray_dir = normalize(ray_dir);
         }
         ray.dir = ray_dir;
+        ray.org += camera.perspective.nearClip * ray_dir;
       } else if (camera.type == Camera::ORTHOGRAPHIC) {
         auto &orthographic = camera.orthographic;
         ray.dir = normalize(orthographic.dir);
