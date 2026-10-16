@@ -267,8 +267,6 @@ include(CMakePackageConfigHelpers)
 
 
 # ==================================================================
-option(BARNEY_DISABLE_DENOISING "DISable denoising" OFF)
-#option(BARNEY_HAVE_NANOVDB "Include Support for NanoVDB" ON)
 set(BARNEY_HAVE_NANOVDB ON)
 
 

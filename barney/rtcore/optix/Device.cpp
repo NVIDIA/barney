@@ -49,7 +49,7 @@ namespace BARNEY_NS {
 
     Denoiser *Device::createDenoiser()
     {
-#if !OPTIX_DISABLE_DENOISING && OPTIX_VERSION >= 80000
+#if OPTIX_VERSION >= 80000
       auto *d = new Optix8Denoiser(this);
       if (!d->available) {
         delete d;

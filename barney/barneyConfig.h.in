@@ -21,8 +21,6 @@
 // if enabled, this means we're building with MPI support
 #cmakedefine01 BARNEY_MPI
 
-#cmakedefine01 BARNEY_DISABLE_DENOISING
-
 #cmakedefine01 BARNEY_USE_MULTI_SCATTERING
 
 #define BARNEY_STRINGIFY(x) #x

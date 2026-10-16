@@ -153,6 +153,7 @@ namespace BARNEY_NS {
       m_aspect = getParam<float>("aspect", 1.f);
       m_fovy = getParam<float>("fovy", anari::radians(60.f));
       m_focusDistance = getParam<float>("focusDistance", 0.f);
+      m_nearClip = getParam<float>("nearClip", 0.f);
       m_apertureRadius = getParam<float>("apertureRadius", 0.f);
     }
 
@@ -163,6 +164,7 @@ namespace BARNEY_NS {
       bnSetVec(m_barneyCamera, "direction", m_dir);
       bnSet1f(m_barneyCamera, "aspect", m_aspect);
       bnSet1f(m_barneyCamera, "focusDistance", m_focusDistance);
+      bnSet1f(m_barneyCamera, "nearClip", m_nearClip);
       bnSet1f(m_barneyCamera, "apertureRadius", m_apertureRadius);
       bnSet1f(m_barneyCamera, "fovy", anari::degrees(m_fovy));
       applyBaseCameraParameters();
