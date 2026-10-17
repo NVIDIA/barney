@@ -150,7 +150,7 @@ namespace BARNEY_NS {
       // through.
       const vec3f Ng = normalize((const vec3f&)hitData.worldNormal);
       if (this->normal.type == PossiblyMappedParameter::SAMPLER) {
-        const vec3f ts = normalize(((const vec3f)normal)*2.f-1.f);
+        const vec3f ts = (const vec3f)normal;
         const vec3f N = packedBSDF::physicallybased::applyNormalMap
           (ts,Ng,hitData.worldTangent);
         bsdf.normal = N;
@@ -161,7 +161,7 @@ namespace BARNEY_NS {
       }
       // Clearcoat normal: same TBN treatment as the base normal.
       if (this->clearcoatNormal.type == PossiblyMappedParameter::SAMPLER) {
-        const vec3f ts = normalize(((const vec3f)clearcoatNormal)*2.f-1.f);
+        const vec3f ts = (const vec3f)clearcoatNormal;
         const vec3f Nc = packedBSDF::physicallybased::applyNormalMap
           (ts,Ng,hitData.worldTangent);
         bsdf.clearcoatNormal = Nc;
