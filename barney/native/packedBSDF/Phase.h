@@ -31,6 +31,9 @@ namespace BARNEY_NS {
         inline __rtc_device
         float hgPhase(float cosTheta) const;
 
+        inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg) const
+        { return eval(dg,wi,dbg); }
+
         static inline __rtc_device
         vec3f sampleDirection(vec3f wi_in, float g, Random &random);
         
@@ -105,11 +108,13 @@ namespace BARNEY_NS {
                           Random &random,
                           bool dbg) const
       {
+        scatter = {};
         vec3f wi_in = normalize(-dg.wo);
         scatter.dir = HGPhase::sampleDirection(wi_in, g, random);
         float density = hgPhase(dot(wi_in, scatter.dir));
         scatter.pdf = density;
-        scatter.f_r = (const vec3f&)albedo * density;
+        scatter.weight = (const vec3f&)albedo;
+        scatter.event = ScatterResult::VOLUME_EVENT;
         scatter.type = ScatterResult::VOLUME;
       }
 
@@ -119,6 +124,8 @@ namespace BARNEY_NS {
       struct SimplePhase {
         inline SimplePhase() = default;
         inline __rtc_device SimplePhase(vec3f color, float avg_reflectance=.7f);
+        inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg) const
+        { return eval(dg,wi,dbg); }
 
         inline __rtc_device
         float pdf(DG dg, vec3f wi, bool dbg) const;
@@ -159,14 +166,16 @@ namespace BARNEY_NS {
                           Random &random,
                           bool dbg) const
       {
+        scatter = {};
         float r1 = random();
         float r2 = random(); 
-        float x = cosf(TWO_PI*r1)*sqrtf(r2*(1.f-r2));
-        float y = sinf(TWO_PI*r1)*sqrtf(r2*(1.f-r2));
+        float x = 2.f*cosf(TWO_PI*r1)*sqrtf(r2*(1.f-r2));
+        float y = 2.f*sinf(TWO_PI*r1)*sqrtf(r2*(1.f-r2));
         float z = (1.f-2.f*r2);
         float density = ONE_OVER_FOUR_PI;
         scatter.pdf = density;
-        scatter.f_r = (const vec3f&)albedo * density;
+        scatter.weight = (const vec3f&)albedo;
+        scatter.event = ScatterResult::VOLUME_EVENT;
         scatter.dir = vec3f(x,y,z);
         scatter.type = ScatterResult::VOLUME;
       }

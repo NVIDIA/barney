@@ -63,12 +63,33 @@ namespace BARNEY_NS {
       inline __rtc_device PackedBSDF(const packedBSDF::PhysicallyBased &p)
       { type = TYPE_PhysicallyBased; data.physicallyBased = p; }
       
+      // World-space unit wi points away from the hit. Includes each surface
+      // lobe's incident cosine; phase values are unchanged. PDF matches pdf().
+      inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg=false) const
+      {
+        switch (type) {
+        case TYPE_SimplePhase: return data.simplePhase.evalProjected(dg,wi,dbg);
+        case TYPE_HGPhase: return data.hgPhase.evalProjected(dg,wi,dbg);
+        case TYPE_NVisii: return data.nvisii.evalProjected(dg,wi,dbg);
+        case TYPE_Glass: return data.glass.evalProjected(dg,wi,dbg);
+        case TYPE_Lambertian: return data.lambertian.evalProjected(dg,wi,dbg);
+        case TYPE_PhysicallyBased: return data.physicallyBased.evalProjected(dg,wi,dbg);
+        default: return EvalRes::zero();
+        }
+      }
+
+      // Raw continuous BSDF (or albedo-weighted phase), without projection
+      // or PDF division. Delta contributions are excluded.
       inline __rtc_device
       EvalRes eval(DG dg, vec3f w_i, bool dbg=false) const;
 
+      // Marginal solid-angle density of scatter(), including lobe-selection
+      // probabilities. Rejected samples are not renormalized; deltas excluded.
       inline __rtc_device
       float pdf(DG dg, vec3f w_i, bool dbg=false) const;
       
+      // Continuous weight = evalProjected().value / marginal PDF. Discrete
+      // weights include event-probability compensation, with delta=true/pdf=0.
       inline __rtc_device
       void scatter(ScatterResult &scatter,
                    const DG &dg,
@@ -129,7 +150,7 @@ namespace BARNEY_NS {
                              Random &random,
                              bool dbg) const
     {
-      scatter.pdf = 0.f;
+      scatter = {};
       if (type == TYPE_HGPhase)
         return data.hgPhase.scatter(scatter,dg,random,dbg);
       if (type == TYPE_SimplePhase)

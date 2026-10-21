@@ -91,7 +91,7 @@ namespace BARNEY_NS {
         //-----------------------------------------------------------------------------
 
         // Transform a tangent-space normal (e.g. from a normal-map sampler,
-        // already remapped to [-1,1]) into world space around the geometric
+        // already remapped to [-1,1]) into world space around the shading
         // normal `N`. This N-only overload is the fallback used when the
         // geometry carries no per-vertex tangent: the frame is built
         // deterministically from `N` (arbitrary but stable tangent
@@ -105,7 +105,7 @@ namespace BARNEY_NS {
                                          + tangentSpaceNormal.y * f.vy
                                          + tangentSpaceNormal.z * f.vz);
           // Negated comparison catches NaN (zero-decoded texels) as well as
-          // zero-length results — fall back to the geometric normal so the
+          // zero-length results — fall back to the shading normal so the
           // shading frame is always usable.
           return (dot(result, result) > 1e-12f) ? result : N;
         }
@@ -387,7 +387,8 @@ namespace BARNEY_NS {
         inline __rtc_device vec3f
         computeF90(const PhysicallyBasedShadingState *state)
         {
-          return mix(vec3f(state->specular), vec3f(1.0f), state->metallic);
+          return mix(vec3f(state->ior == 1.f ? 0.f : state->specular),
+                     vec3f(1.0f), state->metallic);
         }
 
         inline __rtc_device vec3f schlickFresnel(vec3f F0, vec3f F90, float VdotH)
@@ -413,181 +414,159 @@ namespace BARNEY_NS {
           return F;
         }
 
-        // Full BRDF (diffuse + GGX specular + clearcoat + sheen) for the
-        // reflection side, i.e. the `base` term of VisRTX shadeSurface *before*
-        // the `* NdotL * radiance / pdf` multiplier. Returns 0 for through-surface
-        // (NdotL <= 0) directions, which NEE never combines.
-        inline __rtc_device vec3f
-        pbrEvalBase(const PhysicallyBasedShadingState *state,
+        // Value and marginal density must share the sharp GGX factors. Even
+        // one ULP in independently reconstructed half-vectors can prevent D
+        // from cancelling in value/pdf at the roughness floor.
+        inline __rtc_device EvalRes
+        pbrEvaluate(const PhysicallyBasedShadingState *state,
                     float eta,
                     const vec3f &N,
                     const vec3f &Nc,
                     const vec3f &V,
-                    const vec3f &L)
-        {
-          const float NdotL = dot(N, L);
-          if (!(NdotL > 0.0f))
-            return vec3f(0.0f);
-
-          const vec3f H = normalize(L + V);
-          const float NdotH = fmaxf(dot(N, H), 0.0f);
-          const float NdotV = fmaxf(dot(N, V), 1e-6f);
-          const float VdotH = fmaxf(dot(V, H), 0.0f);
-
-          const vec3f F0 = computeF0(state, eta);
-          const vec3f F90 = computeF90(state);
-          const vec3f F = evalFresnelWithIridescence(state, F0, F90, VdotH);
-          const vec3f Fdiff = evalFresnelWithIridescence(state, F0, F90, NdotV);
-
-          const float alpha = fmaxf(pow2(state->roughness), 1e-4f);
-          const float alpha2 = alpha * alpha;
-          const float D = ggxD(NdotH, alpha2);
-          const float G2 = smithG2GGX(NdotV, fmaxf(NdotL, 1e-6f), alpha2);
-          const vec3f specularBRDF =
-            (F * D * G2) / (4.0f * NdotV * fmaxf(NdotL, 1e-6f));
-
-          const vec3f diffuseColor =
-            mix(rtc::load(state->baseColor), vec3f(0.0f), state->metallic);
-          const vec3f diffuseBRDF = (vec3f(1.0f) - Fdiff) * ONE_OVER_PI * diffuseColor
-            * state->occlusion * (1.0f - state->transmission);
-
-          vec3f base = diffuseBRDF + specularBRDF;
-
-          if (state->sheenColor.x > 0.0f || state->sheenColor.y > 0.0f
-              || state->sheenColor.z > 0.0f) {
-            const float alphaS = fmaxf(pow2(state->sheenRoughness), 1e-4f);
-            const float Ds = charlieD(NdotH, alphaS);
-            const float Vs = charlieV(NdotV, fmaxf(NdotL, 1e-6f));
-            // KHR_materials_sheen energy compensation: the sheen layer's
-            // average directional albedo is ~0.157 * max(sheenColor), so the
-            // underlying base is dimmed by that amount to keep total
-            // reflectance from exceeding 1.
-            const vec3f sheenColor = rtc::load(state->sheenColor);
-            const float sheenComp =
-              1.0f - 0.157f * fmaxf(sheenColor.x,
-                                    fmaxf(sheenColor.y, sheenColor.z));
-            base = base * sheenComp + sheenColor * Ds * Vs;
-          }
-
-          if (state->clearcoat > 0.0f) {
-            const float NcDotV = fmaxf(dot(Nc, V), 1e-6f);
-            const float NcDotL = fmaxf(dot(Nc, L), 0.0f);
-            const float NcDotH = fmaxf(dot(Nc, H), 0.0f);
-            // Coat lobe Fresnel at the shared half-vector, per the glTF
-            // microfacet clearcoat BRDF; the FcV form is only used for the
-            // lobe-selection weight and base attenuation.
-            const float FcH = CLEARCOAT_F0
-              + (1.0f - CLEARCOAT_F0) * pow5(1.0f - VdotH);
-            const float FcV = CLEARCOAT_F0
-              + (1.0f - CLEARCOAT_F0) * pow5(1.0f - NcDotV);
-            const float alphaC = fmaxf(pow2(state->clearcoatRoughness), 1e-4f);
-            const float alphaC2 = alphaC * alphaC;
-            const float Dc = ggxD(NcDotH, alphaC2);
-            const float Gc = smithG2GGX(NcDotV, fmaxf(NcDotL, 1e-6f), alphaC2);
-            const float clearcoatLobe =
-              (FcH * Dc * Gc) / (4.0f * NcDotV * fmaxf(NcDotL, 1e-6f));
-            // KHR_materials_clearcoat layering: the base is attenuated once
-            // (view-side coat Fresnel) and the coat lobe added on top; the
-            // NcDotL projection routes the coat cosine through the base
-            // normal, which eval() multiplies by NdotL (VisRTX shadeSurface).
-            base = base * (1.0f - state->clearcoat * FcV);
-            base += vec3f(state->clearcoat * clearcoatLobe) * NcDotL
-              / fmaxf(NdotL, 1e-6f);
-          }
-
-          return base;
-        }
-
-        // BSDF sampling pdf (solid angle) for the reflection side — the
-        // closed-form density of the scatter() sampling strategy. Through-surface
-        // directions return 0 (NEE's shadeSurface early-outs at NdotL<=0, so they
-        // are never combined; the escape estimator owns them outright).
-        inline __rtc_device float
-        pbrBsdfPdf(const PhysicallyBasedShadingState *state,
-                   float eta,
-                   const vec3f &N,
-                   const vec3f &Nc,
-                   const vec3f &V,
-                   const vec3f &L)
+                    const vec3f &L,
+                    bool reflection,
+                    bool projected)
         {
           const float NdotV = dot(N, V);
           const float NdotL = dot(N, L);
-          if (!(NdotV > 0.0f) || !(NdotL > 0.0f))
-            return 0.0f;
+          const bool baseSupported = NdotV > 0.f
+            && (reflection ? NdotL > 0.f : NdotL < 0.f);
+          if (!reflection && (eta == 1.f || !baseSupported))
+            return EvalRes::zero();
+
+          vec3f Q = V + L;
+          if (!reflection) {
+            // Explicit contraction keeps reconstruction identical when pdf()
+            // inlining eliminates the value-only work from this evaluator.
+            Q = vec3f(fmaf(eta, V.x, L.x),
+                      fmaf(eta, V.y, L.y),
+                      fmaf(eta, V.z, L.z));
+          }
+          const float length2 = dot(Q, Q);
+          if (!(length2 > 0.f) || !isfinite(length2))
+            return EvalRes::zero();
+          vec3f H = Q / sqrtf(length2);
+          if (!reflection && dot(H, N) < 0.f) H = -H;
+          const float VdotH = dot(V, H);
+          const float LdotH = dot(L, H);
+          if (!(VdotH > 0.f) || (!reflection && !(LdotH < 0.f)))
+            return EvalRes::zero();
 
           const vec3f F0 = computeF0(state, eta);
           const vec3f F90 = computeF90(state);
           const vec3f Fv = evalFresnelWithIridescence(state, F0, F90, NdotV);
           const vec3f transmissionFilter = computeTransmissionFilter(state);
+          vec3f Fh = evalFresnelWithIridescence(state, F0, F90, VdotH);
+          const vec3f Ltrans = refract(neg(V), H, eta);
+          // Sampling folds all transmission energy into reflection at TIR.
+          const bool tir = luminance(transmissionFilter) > 0.f
+            && dot(Ltrans, Ltrans) == 0.f;
+          if (tir) Fh = vec3f(1.f);
+          const vec3f transmitEnergy =
+            max(vec3f(1.f) - Fh, vec3f(0.f)) * transmissionFilter;
+          const float reflW = fmaxf(luminance(Fh), 0.f);
+          const float transW = fmaxf(luminance(transmitEnergy), 0.f);
+          const float reflectGivenSpec =
+            reflW + transW > 0.f ? reflW / (reflW + transW) : 1.f;
 
-          const float specSelW = fmaxf(luminance(Fv), 0.0f)
-            + fmaxf(luminance(max(vec3f(1.0f) - Fv, vec3f(0.0f))
-                              * transmissionFilter),
-                    0.0f);
-          // Sheen has no dedicated sampling lobe: its selection weight is
-          // folded into the diffuse lobe (cosine sampling stays a valid, if
-          // high-variance, importance distribution for it), so sheen-only
-          // materials keep a non-zero pdf and scatter() keeps returning a
-          // direction. Must stay in sync with the diffSelW computation in
-          // scatter().
-          const float sheenSelW =
-            fmaxf(luminance(rtc::load(state->sheenColor)), 0.0f);
+          const float specSelW = fmaxf(luminance(Fv), 0.f)
+            + fmaxf(luminance(max(vec3f(1.f) - Fv, vec3f(0.f))
+                              * transmissionFilter), 0.f);
+          // Sheen has no dedicated proposal; keep this diffuse selection
+          // weight in sync with scatter().
           const float diffSelW =
-            fmaxf(luminance(max(vec3f(1.0f) - Fv, vec3f(0.0f))
+            fmaxf(luminance(max(vec3f(1.f) - Fv, vec3f(0.f))
                             * rtc::load(state->baseColor)
-                            * (1.0f - state->metallic)
-                            * (1.0f - state->transmission)
-                            * state->occlusion),
-                  0.0f)
-            + sheenSelW;
+                            * (1.f - state->metallic)
+                            * (1.f - state->transmission)
+                            * state->occlusion), 0.f)
+            + fmaxf(luminance(rtc::load(state->sheenColor)), 0.f);
           const float baseSel = specSelW + diffSelW;
 
-          float pdf = 0.0f;
-          if (baseSel > 0.0f) {
-            const float pSpec = specSelW / baseSel;
-            const float pDiff = diffSelW / baseSel;
-
-            pdf += pDiff * NdotL * ONE_OVER_PI;
-
+          EvalRes result;
+          if (baseSupported) {
+            const float nv = fmaxf(NdotV, 1e-6f);
+            const float nl = fmaxf(fabsf(NdotL), 1e-6f);
+            const float NdotH = fmaxf(dot(N, H), 0.f);
             const float alpha = fmaxf(pow2(state->roughness), 1e-4f);
             const float alpha2 = alpha * alpha;
-            const vec3f H = normalize(V + L);
-            const float NdotH = fmaxf(dot(N, H), 0.0f);
-            const float VdotH = fmaxf(dot(V, H), 0.0f);
-            const vec3f Fh = evalFresnelWithIridescence(state, F0, F90, VdotH);
-            const vec3f Ltrans = refract(neg(V), H, eta);
-            const bool tir = luminance(transmissionFilter) > 0.0f
-              && (length(Ltrans) < 1e-6f || dot(Ltrans, N) >= 0.0f);
-            const float reflW = tir ? 1.0f : fmaxf(luminance(Fh), 0.0f);
-            const float transW =
-              tir ? 0.0f
-                  : fmaxf(luminance(max(vec3f(1.0f) - Fh, vec3f(0.0f))
-                                    * transmissionFilter),
-                          0.0f);
-            const float reflectGivenSpec =
-              (reflW + transW) > 0.0f ? reflW / (reflW + transW) : 1.0f;
-            const float NdotVSafe = fmaxf(NdotV, 1e-6f);
-            const float pdfReflVndf =
-              ggxD(NdotH, alpha2) * smithG1GGX(NdotVSafe, alpha2)
-              / (4.0f * NdotVSafe);
-            pdf += pSpec * reflectGivenSpec * pdfReflVndf;
+            const float D = ggxD(NdotH, alpha2);
+            const float lambdaV = smithLambdaGGX(nv, alpha2);
+            const float G1 = 1.f / (1.f + lambdaV);
+            const float G2 = 1.f / (1.f + lambdaV + smithLambdaGGX(nl, alpha2));
+            const float pSpec = baseSel > 0.f ? specSelW / baseSel : 0.f;
+            const float pDiff = baseSel > 0.f ? diffSelW / baseSel : 0.f;
+
+            if (reflection) {
+              result.pdf = pDiff * NdotL * ONE_OVER_PI
+                + pSpec * reflectGivenSpec * D * G1 / (4.f * nv);
+              const vec3f Fdiff = evalFresnelWithIridescence(state, F0, F90, nv);
+              const vec3f diffuseColor =
+                mix(rtc::load(state->baseColor), vec3f(0.f), state->metallic);
+              result.value = (vec3f(1.f) - Fdiff) * ONE_OVER_PI * diffuseColor
+                * state->occlusion * (1.f - state->transmission)
+                + Fh * D * G2 / (4.f * nv * nl);
+
+              if (state->sheenColor.x > 0.f || state->sheenColor.y > 0.f
+                  || state->sheenColor.z > 0.f) {
+                const float alphaS = fmaxf(pow2(state->sheenRoughness), 1e-4f);
+                const vec3f sheenColor = rtc::load(state->sheenColor);
+                const float sheenComp = 1.f - 0.157f
+                  * fmaxf(sheenColor.x, fmaxf(sheenColor.y, sheenColor.z));
+                result.value = result.value * sheenComp
+                  + sheenColor * charlieD(NdotH, alphaS) * charlieV(nv, nl);
+              }
+              if (projected) result.value *= NdotL;
+            } else {
+              const float denom = eta * VdotH + LdotH;
+              if (denom == 0.f) return EvalRes::zero();
+              // VNDF density times the refractive half-vector Jacobian.
+              const float common = D * VdotH * fabsf(LdotH)
+                / (denom * denom);
+              result.pdf = pSpec * (1.f - reflectGivenSpec) * common * G1 / nv;
+              result.value = transmitEnergy
+                * (common * G2 * eta * eta / NdotV);
+              if (!projected) result.value /= -NdotL;
+            }
           }
 
-          const float NcDotV = fmaxf(dot(Nc, V), 0.0f);
-          const float FcV = CLEARCOAT_F0 + (1.0f - CLEARCOAT_F0) * pow5(1.0f - NcDotV);
+          const float NcDotV = fmaxf(dot(Nc, V), 0.f);
+          const float NcDotL = dot(Nc, L);
+          const float FcV = CLEARCOAT_F0
+            + (1.f - CLEARCOAT_F0) * pow5(1.f - NcDotV);
           const float ccProb = saturate(state->clearcoat * FcV);
-          pdf *= (1.0f - ccProb);
-
-          if (ccProb > 0.0f && NcDotV > 1e-6f && dot(Nc, L) > 0.0f) {
-            const vec3f Hc = normalize(V + L);
-            const float NcDotH = fmaxf(dot(Nc, Hc), 0.0f);
-            const float alphaC = fmaxf(pow2(state->clearcoatRoughness), 1e-4f);
-            const float alphaC2 = alphaC * alphaC;
-            pdf += ccProb * ggxD(NcDotH, alphaC2) * smithG1GGX(NcDotV, alphaC2)
-              / (4.0f * fmaxf(NcDotV, 1e-6f));
+          result.pdf *= 1.f - ccProb;
+          if (!reflection) {
+            const float FcL = CLEARCOAT_F0
+              + (1.f - CLEARCOAT_F0) * pow5(1.f - fabsf(NcDotL));
+            result.value *= (1.f - state->clearcoat * FcV)
+              * (1.f - state->clearcoat * FcL);
+          } else if (state->clearcoat > 0.f) {
+            const float cv = fmaxf(NcDotV, 1e-6f);
+            const float FcVSafe = CLEARCOAT_F0
+              + (1.f - CLEARCOAT_F0) * pow5(1.f - cv);
+            result.value *= 1.f - state->clearcoat * FcVSafe;
+            // Coat support and projection are independent of the base normal.
+            if (NcDotV > 0.f && NcDotL > 0.f) {
+              const float cl = fmaxf(NcDotL, 1e-6f);
+              const float NcDotH = fmaxf(dot(Nc, H), 0.f);
+              const float alphaC = fmaxf(pow2(state->clearcoatRoughness), 1e-4f);
+              const float alphaC2 = alphaC * alphaC;
+              const float Dc = ggxD(NcDotH, alphaC2);
+              const float lambdaC = smithLambdaGGX(cv, alphaC2);
+              const float G1c = 1.f / (1.f + lambdaC);
+              const float G2c = 1.f
+                / (1.f + lambdaC + smithLambdaGGX(cl, alphaC2));
+              const float FcH = CLEARCOAT_F0
+                + (1.f - CLEARCOAT_F0) * pow5(1.f - VdotH);
+              result.value += vec3f(state->clearcoat * FcH * Dc * G2c
+                                   / (4.f * cv * cl))
+                * (projected ? NcDotL : 1.f);
+              if (NcDotV > 1e-6f)
+                result.pdf += ccProb * Dc * G1c / (4.f * cv);
+            }
           }
-
-          return pdf;
+          return result;
         }
 
         //-----------------------------------------------------------------------------
@@ -692,49 +671,39 @@ namespace BARNEY_NS {
           iridescenceThickness = 0.0f;
         }
 
-        // pdf of the scatter() sampling strategy for direction `wi` (solid
-        // angle). Used by the renderer for environment MIS; returns 0 for
-        // through-surface directions, matching eval()/VisRTX pbrBsdfPdf.
+        // Density in solid angle, excluding discrete index-matched transmission.
         inline __rtc_device float pdf(DG dg, const vec3f &wi, bool dbg) const
         {
-          const PhysicallyBasedShadingState st = unpack();
-          const vec3f V = dg.wo;
-          vec3f N = rtc::load(st.normal);
-          if (dot(N, V) < 0.0f) N = -N;
-          vec3f Nc = rtc::load(st.clearcoatNormal);
-          if (dot(Nc, V) < 0.0f) Nc = -Nc;
-          const float eta = dg.insideMedium ? st.ior : (1.0f / st.ior);
-          return physicallybased::pbrBsdfPdf(&st, eta, N, Nc, V, wi);
+          return evaluate(dg,wi,dbg,true).pdf;
         }
 
-        // NEE evaluation: full BRDF (diffuse + GGX specular + clearcoat +
-        // sheen) times cos(N,L), with the matching marginal sampling pdf — the
-        // barney equivalent of VisRTX shadeSurface's `base * NdotL` term.
+        inline __rtc_device EvalRes evalProjected(DG dg, const vec3f &wi, bool dbg) const
+        { return evaluate(dg,wi,dbg,true); }
+
         inline __rtc_device EvalRes eval(DG dg, const vec3f &wi, bool dbg) const
+        { return evaluate(dg,wi,dbg,false); }
+
+        inline __rtc_device EvalRes evaluate(DG dg, const vec3f &wi, bool dbg,
+                                              bool projected) const
         {
           const PhysicallyBasedShadingState st = unpack();
           const vec3f V = dg.wo;
-          vec3f N = rtc::load(st.normal);
-          if (dot(N, V) < 0.0f) N = -N;
+          const vec3f N = dg.orientShadingNormal(rtc::load(st.normal));
           const float eta = dg.insideMedium ? st.ior : (1.0f / st.ior);
-          vec3f Nc = rtc::load(st.clearcoatNormal);
-          if (dot(Nc, V) < 0.0f) Nc = -Nc;
-          const float NdotL = fmaxf(dot(N, wi), 0.0f);
-          const vec3f base = physicallybased::pbrEvalBase(&st, eta, N, Nc, V, wi);
-          const float pdf = physicallybased::pbrBsdfPdf(&st, eta, N, Nc, V, wi);
-          return EvalRes(base * NdotL, pdf);
+          const vec3f Nc = dg.orientShadingNormal(rtc::load(st.clearcoatNormal));
+          const float side = dot(dg.Ng,wi)*dot(dg.Ng,V);
+          if (side == 0.f) return EvalRes::zero();
+          return physicallybased::pbrEvaluate(&st, eta, N, Nc, V, wi,
+                                               side > 0.f, projected);
         }
 
         // Importance-sample the BSDF (port of VisRTX nextRay): clearcoat lobe
         // picked with probability clearcoat*FcV, then a V-only diffuse/specular
         // split, then a Fresnel-driven reflect/transmit split inside specular.
         //
-        // For reflection lobes we report the full BRDF (pbrEvalBase, no cosine)
-        // and the marginal pdf (pbrBsdfPdf), so the renderer's `f_r*cos/pdf`
-        // reproduces the standard single-sample estimator and stays consistent
-        // with eval(). Through-surface transmission is a delta-like
-        // continuation (pdf = +inf, like Glass): the renderer owns it and gives
-        // it w_bsdf = 1 in env MIS, matching VisRTX's CONTINUES_THROUGH_SURFACE.
+        // Every continuous sample carries full projected evaluation divided
+        // by the marginal density, including rough transmission. Index-matched
+        // refraction is the only discrete event in this roughness-floor model.
         inline __rtc_device void scatter(ScatterResult &scatter,
                                          const DG &dg,
                                          Random &random,
@@ -743,10 +712,8 @@ namespace BARNEY_NS {
           scatter = {};
           const PhysicallyBasedShadingState st = unpack();
           const vec3f V = dg.wo;
-          vec3f N = rtc::load(st.normal);
-          if (dot(N, V) < 0.0f) N = -N;
-          vec3f Nc = rtc::load(st.clearcoatNormal);
-          if (dot(Nc, V) < 0.0f) Nc = -Nc;
+          const vec3f N = dg.orientShadingNormal(rtc::load(st.normal));
+          const vec3f Nc = dg.orientShadingNormal(rtc::load(st.clearcoatNormal));
           const float eta = dg.insideMedium ? st.ior : (1.0f / st.ior);
 
           // Clearcoat lobe: pick with probability clearcoat*FcV(NcDotV). This
@@ -758,14 +725,17 @@ namespace BARNEY_NS {
               * physicallybased::pow5(1.0f - NcDotV_world);
           const float clearcoatPick = saturate(st.clearcoat * FcV_world);
 
-          auto clearcoatExitAttn = [&](const vec3f &Lworld) -> float {
-            if (st.clearcoat <= 0.0f)
-              return 1.0f;
-            const float NcDotL = fabsf(dot(Nc, Lworld));
-            const float FcL = CLEARCOAT_F0
-              + (1.0f - CLEARCOAT_F0)
-                * physicallybased::pow5(1.0f - NcDotL);
-            return saturate(1.0f - st.clearcoat * FcL);
+          auto finish = [&](vec3f L, ScatterResult::Type type, bool transmission=false) {
+            const float side = dot(dg.Ng,L)*dot(dg.Ng,V);
+            if (transmission ? side >= 0.f : side <= 0.f) return;
+            const EvalRes e = evalProjected(dg,L,dbg);
+            if (!(e.pdf > 0.f) || !isfinite(e.pdf)) return;
+            scatter.dir = L;
+            scatter.pdf = e.pdf;
+            scatter.weight = e.value/e.pdf;
+            scatter.type = type;
+            scatter.event = dot(dg.Ng,L)*dot(dg.Ng,V) > 0.f ? ScatterResult::REFLECTION : ScatterResult::TRANSMISSION;
+            scatter.eta = scatter.event == ScatterResult::TRANSMISSION ? eta : 1.f;
           };
 
           if (clearcoatPick > 0.0f && random() < clearcoatPick) {
@@ -787,19 +757,12 @@ namespace BARNEY_NS {
             }
             const vec3f Lworld =
               normalize(owl::common::xfmVector(toWorldC, LlocalC));
-            scatter.dir = Lworld;
-            scatter.f_r
-              = physicallybased::pbrEvalBase(&st, eta, N, Nc, V, Lworld);
-            scatter.pdf
-              = physicallybased::pbrBsdfPdf(&st, eta, N, Nc, V, Lworld);
-            scatter.type = ScatterResult::GLOSSY;
-            scatter.offsetDirection = +1.0f;
-            scatter.changedMedium = false;
+            finish(Lworld,ScatterResult::GLOSSY);
             return;
           }
 
           // Base path: diffuse vs specular, split V-only so the sampling
-          // density is the closed form pbrBsdfPdf evaluates.
+          // density is the closed form pbrEvaluate evaluates.
           const owl::common::LinearSpace3f toWorld = owl::common::frame(N);
           const vec3f Vlocal = owl::common::xfmVector(toWorld.transposed(), V);
           if (Vlocal.z <= 0.0f) {
@@ -824,7 +787,7 @@ namespace BARNEY_NS {
             * rtc::load(st.baseColor) * (1.0f - st.metallic)
             * (1.0f - st.transmission) * st.occlusion;
           // Sheen is folded into the diffuse selection weight (see
-          // pbrBsdfPdf); keep the two computations in sync.
+          // pbrEvaluate); keep the two computations in sync.
           const float sheenSelW
             = fmaxf(luminance(rtc::load(st.sheenColor)), 0.0f);
           const float diffSelW = fmaxf(luminance(diffuseEnergy), 0.0f)
@@ -842,14 +805,7 @@ namespace BARNEY_NS {
             const vec3f localDir = cosineSampleHemisphere(s);
             const vec3f Lworld =
               normalize(owl::common::xfmVector(toWorld, localDir));
-            scatter.dir = Lworld;
-            scatter.f_r
-              = physicallybased::pbrEvalBase(&st, eta, N, Nc, V, Lworld);
-            scatter.pdf
-              = physicallybased::pbrBsdfPdf(&st, eta, N, Nc, V, Lworld);
-            scatter.type = ScatterResult::DIFFUSE;
-            scatter.offsetDirection = +1.0f;
-            scatter.changedMedium = false;
+            finish(Lworld,ScatterResult::DIFFUSE);
             return;
           }
 
@@ -857,7 +813,6 @@ namespace BARNEY_NS {
           // reflect/transmit by the microfacet Fresnel F(VdotH). TIR folds all
           // energy into reflection.
           const float alpha = fmaxf(physicallybased::pow2(st.roughness), 1e-4f);
-          const float alpha2 = alpha * alpha;
           const vec3f Hlocal =
             physicallybased::sampleGGXVNDF(Vlocal, alpha, random(), random());
           const float VdotH = fmaxf(dot(Vlocal, Hlocal), 0.0f);
@@ -867,7 +822,7 @@ namespace BARNEY_NS {
           const vec3f Lrefl = reflect(neg(Vlocal), Hlocal);
           const vec3f Ltrans = refract(neg(Vlocal), Hlocal, eta);
           const bool tir =
-            hasTransmission && (length(Ltrans) < 1e-6f || Ltrans.z >= 0.0f);
+            hasTransmission && dot(Ltrans,Ltrans) == 0.f;
           const vec3f reflectEnergy = tir ? vec3f(1.0f) : Fh;
           const vec3f transmitEnergy =
             tir ? vec3f(0.0f)
@@ -885,35 +840,27 @@ namespace BARNEY_NS {
             }
             const vec3f Lworld =
               normalize(owl::common::xfmVector(toWorld, Lrefl));
-            scatter.dir = Lworld;
-            scatter.f_r
-              = physicallybased::pbrEvalBase(&st, eta, N, Nc, V, Lworld);
-            scatter.pdf
-              = physicallybased::pbrBsdfPdf(&st, eta, N, Nc, V, Lworld);
-            scatter.type = ScatterResult::GLOSSY;
-            scatter.offsetDirection = +1.0f;
-            scatter.changedMedium = false;
+            finish(Lworld,ScatterResult::GLOSSY);
             return;
           }
 
-          // Transmission lobe (through the surface): delta-like continuation,
-          // pdf = +inf so the renderer's divisor becomes 1 and env MIS gives it
-          // w_bsdf = 1 (the escape owns the background, as in Glass).
-          const float NdotLt = -Ltrans.z;
-          const float G1t = physicallybased::smithG1GGX(Vlocal.z, alpha2);
-          const float G2t =
-            physicallybased::smithG2GGX(Vlocal.z, fmaxf(NdotLt, 0.0f), alpha2);
           const vec3f Ltworld =
             normalize(owl::common::xfmVector(toWorld, Ltrans));
-          const vec3f weightT =
-            transmitEnergy * (G2t / fmaxf(G1t, 1e-8f)) * clearcoatExitAttn(Ltworld)
-            / fmaxf(pSpec * (1.0f - reflectGivenSpec), 1e-8f);
-          scatter.dir = Ltworld;
-          scatter.f_r = weightT;
-          scatter.pdf = BARNEY_INF;
-          scatter.type = ScatterResult::SPECULAR;
-          scatter.offsetDirection = -1.0f;
-          scatter.changedMedium = true;
+          if (eta == 1.f) {
+            // Index matching collapses refraction to a discrete straight ray,
+            // independently of the microfacet roughness.
+            scatter.dir = -V;
+            const float cl = fabsf(dot(Nc,-V));
+            const float exitAttenuation = 1.f-st.clearcoat*(CLEARCOAT_F0
+              +(1.f-CLEARCOAT_F0)*physicallybased::pow5(1.f-cl));
+            scatter.weight = transmitEnergy*exitAttenuation
+              / (pSpec*(1.f-reflectGivenSpec));
+            scatter.delta = true;
+            scatter.event = ScatterResult::TRANSMISSION;
+            scatter.type = ScatterResult::SPECULAR;
+          } else {
+            finish(Ltworld,ScatterResult::GLOSSY,true);
+          }
         }
       };
     }

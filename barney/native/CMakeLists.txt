@@ -223,3 +223,13 @@ else()
 endif()
 
 rtc_library_properties(barney_${backend}_static)
+
+if (BARNEY_BUILD_BSDF_TESTS)
+  set(BSDF_TEST_SOURCE ${PROJECT_SOURCE_DIR}/tests/bsdf_quality.cu)
+  rtc_configure_source(${BSDF_TEST_SOURCE})
+  add_executable(bsdf_quality_${backend} ${BSDF_TEST_SOURCE})
+  target_link_libraries(bsdf_quality_${backend} PRIVATE barney_${backend}_static)
+  rtc_library_properties(bsdf_quality_${backend})
+  add_test(NAME bsdf_quality_${backend} COMMAND bsdf_quality_${backend})
+  set_tests_properties(bsdf_quality_${backend} PROPERTIES TIMEOUT 180)
+endif()

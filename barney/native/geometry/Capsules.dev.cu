@@ -248,7 +248,7 @@ namespace BARNEY_NS {
         hitData.objectNormal    = make_vec4f(normalize(objectN));
         hitData.worldPosition
           = ti.transformPointFromObjectToWorldSpace(objectP);
-        hitData.worldNormal
+        hitData.worldShadingNormal
           = normalize(ti.transformNormalFromObjectToWorldSpace((const vec3f&)objectN));
 
         // compute a stable epsilon for surface offsetting
@@ -259,7 +259,7 @@ namespace BARNEY_NS {
         surfOfs_eps *= 1e-5f;
 
         // ... and shift the hit point just a little bit off the surface
-        hitData.worldPosition += surfOfs_eps * hitData.worldNormal;
+        hitData.worldPosition += surfOfs_eps * hitData.worldShadingNormal;
 
         // trigger the anari attribute evaluation
         self.setHitAttributes(hitData,interpolator,world,ray.dbg());

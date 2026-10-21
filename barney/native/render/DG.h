@@ -31,33 +31,30 @@ namespace BARNEY_NS {
   namespace native {
     using Random = BARNEY_NS::native::Random2;
     
+    // World-space hit data; wo and sampled wi point away from the hit.
+    // Ng controls sidedness and offsets, not the shading-lobe projection.
+    // See doc/Scattering.md for the evaluation and sampling contract.
     struct DG {
-      vec3f Ng, Ns;
+      vec3f Ng; // Geometric normal oriented toward wo.
+      vec3f Ns; // Unoriented interpolated normal, before material normal maps.
       vec3f wo;
       vec3f P;
       bool  insideMedium;
+
+      // Flip the entire original shading frame, not each mapped lobe toward wo.
+      inline __rtc_device vec3f orientShadingNormal(vec3f normal) const
+      { return dot(Ng,Ns) < 0.f ? -normal : normal; }
     };
 
     struct EvalRes {
-      inline __both__ EvalRes() {}
+      inline __both__ EvalRes() : value(0.f), pdf(0.f) {}
       inline __rtc_device EvalRes(vec3f v, float p) : value(v),pdf(p) {}
       static inline __rtc_device EvalRes zero() { return { vec3f(0.f),0.f }; }
-      inline __rtc_device bool valid() const    { return pdf > 0.f; };// && !isinf(pdf) }
+      inline __rtc_device bool valid() const { return pdf > 0.f && isfinite(pdf); }
+      // Raw BSDF/phase value from eval(); per-lobe cosine included by
+      // evalProjected() for surfaces only. Neither includes division by pdf.
       vec3f value;
-      float pdf;
-    };
-
-    /* TODO merge with ScatterResult - this is leftovers from ospray glass import */
-    struct SampleRes {
-      typedef enum { INVALID, DIFFUSE_REFLECTION, SPECULAR_REFLECTION, SPECULAR_TRANSMISSION } Type;
-      
-      static inline __rtc_device SampleRes zero()
-      { return { vec3f(0.f), vec3f(0.f), INVALID, 0.f }; }
-      inline __rtc_device bool valid() const    { return pdf > 0.f; };
-      vec3f weight;
-      vec3f wi;
-      Type  type;
-      float pdf;
+      float pdf; // Marginal continuous density in solid angle; excludes deltas.
     };
 
     /*! result of scattering a ray on a differential surface,
@@ -71,15 +68,24 @@ namespace BARNEY_NS {
         GLOSSY,
         VOLUME,
       } Type;
-      inline __rtc_device bool valid() const    { return pdf > 0.f; }
+      enum Event { NO_EVENT, REFLECTION, TRANSMISSION, VOLUME_EVENT };
+      inline __rtc_device bool valid() const
+      {
+        return event != NO_EVENT && isfinite(dir.x) && isfinite(dir.y)
+          && isfinite(dir.z) && dot(dir,dir) > 0.f
+          && isfinite(weight.x) && isfinite(weight.y) && isfinite(weight.z)
+          && (delta ? pdf == 0.f : (pdf > 0.f && isfinite(pdf)));
+      }
 
-      vec3f f_r;
-      vec3f dir;
-      float pdf  = 0.f;
-      bool  changedMedium = false;
-      float offsetDirection = +1.f;
+      // Complete radiance multiplier, including sampling compensation and
+      // surface projection. Apply directly; do not multiply by cosine/pdf.
+      vec3f weight = vec3f(0.f);
+      vec3f dir = vec3f(0.f);
+      float pdf = 0.f; // Solid-angle density; zero for delta events.
+      float eta = 1.f; // Incident / transmitted refractive index.
+      bool delta = false;
+      Event event = NO_EVENT;
       ScatterResult::Type type = ScatterResult::INVALID;
-      // bool  wasDiffuse = true;;
     };
 
 

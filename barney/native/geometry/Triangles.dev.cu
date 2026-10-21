@@ -83,6 +83,8 @@ namespace BARNEY_NS {
 
         HitAttributes hitData;
         hitData.worldPosition   = P;
+        hitData.worldGeometricNormal = normalizeSurfaceNormal(
+          ti.transformNormalFromObjectToWorldSpace(osN));
         hitData.objectPosition  = osP;
         hitData.objectNormal    = make_vec4f(osN);
         hitData.primID          = primID;
@@ -105,9 +107,9 @@ namespace BARNEY_NS {
             return ret;
           };
         self.setHitAttributes(hitData,interpolator,world,dbg);
-        hitData.worldNormal
-          = ti.transformNormalFromObjectToWorldSpace
-          ((const vec3f&)hitData.objectNormal);
+        hitData.worldShadingNormal
+          = normalizeSurfaceNormal(ti.transformNormalFromObjectToWorldSpace
+          ((const vec3f&)hitData.objectNormal));
         // Tangents transform as vectors (model matrix), unlike normals. w
         // carries glTF handedness; it is interpolated per-vertex so collapse
         // it back to a sign. w==0 means no tangent array was set.

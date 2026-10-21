@@ -231,7 +231,7 @@ namespace BARNEY_NS {
         hitData.objectPosition  = objectP;
         hitData.worldPosition   = ti.transformPointFromObjectToWorldSpace(objectP);
         hitData.objectNormal    = make_vec4f(normalize(objectN));
-        hitData.worldNormal     = normalize(ti.transformNormalFromObjectToWorldSpace((const vec3f&)hitData.objectNormal));
+        hitData.worldShadingNormal     = normalize(ti.transformNormalFromObjectToWorldSpace((const vec3f&)hitData.objectNormal));
         hitData.primID          = primID;
         hitData.instID          = instID;
         hitData.t               = t_hit;

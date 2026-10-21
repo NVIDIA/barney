@@ -1,675 +1,224 @@
-// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA
-// CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
-
 #include <bit>
-
+#include "native/Camera.h"
+#include "native/FromEnv.h"
+#include "native/GlobalModel.h"
 #include "native/fb/FrameBuffer.h"
 #include "native/fb/TiledFB.h"
-#include "native/render/World.h"
 #include "native/render/DG.h"
-#include "native/Camera.h"
-#include "native/render/Renderer.h"
-#include "native/GlobalModel.h"
 #include "native/render/RayQueue.h"
-#include "native/FromEnv.h"
+#include "native/render/Renderer.h"
+#include "native/render/World.h"
 
 namespace BARNEY_NS {
 namespace native {
-
-#define MAX_DIFFUSE_BOUNCES 1
-
-#define ENV_LIGHT_SAMPLING 1
-
-#define USE_MIS 1
-
-#if !BARNEY_USE_MULTI_SCATTERING
-#define SCI_VIS_MODE 1
-#endif
-
-#define CLAMP_F_R 13.f
-
 #if RTC_DEVICE_CODE
-inline __rtc_device float square(float f)
-{
-  return f * f;
-}
-
-enum
-{
-  MAX_PATH_DEPTH = 10
-};
-
 inline __rtc_device float safe_eps(float f, vec3f v)
 {
   return max(f, 1e-6f * reduce_max(abs(v)));
 }
 
-inline __rtc_device bool sampleAreaLights(Light::Sample &ls,
-    const World::DD &world,
-    const vec3f P,
-    const vec3f N,
-    Random &random,
-    bool dbg)
+inline __rtc_device bool hasEnvironment(
+    const World::DD &w, const Renderer::DD &r)
 {
-  if (world.numQuadLights == 0)
-    return false;
-  static const int RESERVOIR_SIZE = 8;
-  int lID[RESERVOIR_SIZE];
-  float u[RESERVOIR_SIZE];
-  float v[RESERVOIR_SIZE];
-  float weights[RESERVOIR_SIZE];
-  float sumWeights = 0.f;
-  QuadLight::DD light;
-  for (int i = 0; i < RESERVOIR_SIZE; i++) {
-    lID[i] = min(int(random() * world.numQuadLights), world.numQuadLights - 1);
-    weights[i] = 0.f;
-    light = world.quadLights[lID[i]];
-    u[i] = random();
-    v[i] = random();
-    float lightArea = light.area;
-    vec3f LN = light.normal;
-    vec3f LP = light.corner + u[i] * light.edge0 + v[i] * light.edge1;
-    vec3f lightDir = LP - P;
-    float lightDist = length(lightDir);
-    if (lightDist < 1e-3f)
-      continue;
-
-    lightDir *= 1.f / lightDist;
-
-    float weight = (N == vec3f(0.f)) ? 1.f : dot(lightDir, N);
-    if (weight <= 1e-3f)
-      continue;
-    weight *= -dot(lightDir, LN);
-    if (weight <= 1e-3f)
-      continue;
-    weight *= (1.f / (lightDist * lightDist)) * lightArea
-        * reduce_max(light.emission);
-    sumWeights += weight;
-    weights[i] = weight;
-  }
-  if (sumWeights == 0.f)
-    return false;
-  float r = random() * sumWeights;
-  int i = 0;
-  while (i < RESERVOIR_SIZE && r >= weights[i]) {
-    r -= weights[i];
-    ++i;
-  }
-  if (i == RESERVOIR_SIZE)
-    return false;
-
-  light = world.quadLights[lID[i]];
-  vec3f LP = light.corner + u[i] * light.edge0 + v[i] * light.edge1;
-  vec3f LD = LP - P;
-  ls.direction = normalize(LD);
-  ls.distance = length(LD);
-  ls.radiance = light.emission
-      * (light.area * -dot(light.normal, ls.direction) / square(ls.distance));
-  ls.pdf = weights[i] / sumWeights
-      * (float(RESERVOIR_SIZE) / float(world.numQuadLights));
-  return true;
+  return w.envMapLight.texture || r.ambientRadiance > 0.f;
 }
 
-inline __rtc_device bool sampleDirLights(Light::Sample &ls,
-    const World::DD &world,
-    const Renderer::DD &renderer,
-    const vec3f P,
-    const vec3f N,
-    Random &random,
-    bool dbg)
+inline __rtc_device int lightCount(const World::DD &w, const Renderer::DD &r)
 {
-  if (world.numDirLights == 0)
-    return false;
-  static const int RESERVOIR_SIZE = 2;
-  int lID[RESERVOIR_SIZE];
-  float weights[RESERVOIR_SIZE];
-  float sumWeights = 0.f;
-  DirLight::DD light;
-
-  for (int i = 0; i < RESERVOIR_SIZE; i++) {
-    lID[i] = min(int(random() * world.numDirLights), world.numDirLights - 1);
-    weights[i] = 0.f;
-    light = world.dirLights[lID[i]];
-    vec3f light_radiance = light.color * light.radiance;
-
-    vec3f lightDir = -light.direction;
-    float weight = (N == vec3f(0.f)) ? 1.f : dot(lightDir, N);
-    if (weight <= 1e-3f)
-      continue;
-    weight *= reduce_max(light_radiance);
-    if (weight <= 1e-3f)
-      continue;
-    weights[i] = weight;
-    sumWeights += weight;
-  }
-  if (sumWeights == 0.f)
-    return false;
-  float r = random() * sumWeights;
-  int i = 0;
-  while (i < RESERVOIR_SIZE && r >= weights[i]) {
-    r -= weights[i];
-    ++i;
-  }
-  if (i == RESERVOIR_SIZE)
-    return false;
-
-  light = world.dirLights[lID[i]];
-  ls.direction = -light.direction;
-  ls.distance = BARNEY_INF;
-  ls.radiance = light.color * light.radiance * 1.f
-      / (weights[i] / sumWeights
-          * (float(RESERVOIR_SIZE) / float(world.numDirLights)));
-  ls.pdf = BARNEY_INF;
-  return weights[i] != 0.f;
+  return w.numQuadLights + w.numDirLights + w.numPointLights
+      + int(hasEnvironment(w, r));
 }
 
-inline __rtc_device bool samplePointLights(Light::Sample &ls,
-    const World::DD &world,
-    const Renderer::DD &renderer,
-    const vec3f P,
-    const vec3f N,
-    Random &random,
-    bool dbg)
+inline __rtc_device float environmentProbability(
+    const World::DD &w, const Renderer::DD &r, vec3f dir)
 {
-  struct
-  {
-    // constant term
-    const float c0 = 0.f;
-    // linear term
-    const float c1 = 0.f;
-    // square term
-    const float c2 = 1.f;
-  } /* fall-off costants */ foc;
-  if (world.numPointLights == 0)
-    return false;
-  static const int RESERVOIR_SIZE = 2;
-  int lID[RESERVOIR_SIZE];
-  float weights[RESERVOIR_SIZE];
-  float sumWeights = 0.f;
-  PointLight::DD light;
-
-  for (int i = 0; i < RESERVOIR_SIZE; i++) {
-    lID[i] =
-        min(int(random() * world.numPointLights), world.numPointLights - 1);
-    weights[i] = 0.f;
-    light = world.pointLights[lID[i]];
-
-    vec3f lightDirection = light.position - P;
-    float dist = length(lightDirection);
-    float falloff = foc.c0 + foc.c1 * dist + foc.c2 * dist * dist;
-    lightDirection = normalize(lightDirection);
-
-    vec3f light_radiance = light.radianceTowards(P) * (1.f / falloff);
-
-    float weight = (N == vec3f(0.f)) ? 1.f : dot(lightDirection, N);
-    if (weight <= 1e-3f)
-      continue;
-    weight *= reduce_max(light_radiance);
-    if (weight <= 1e-3f)
-      continue;
-    weights[i] = weight;
-    sumWeights += weight;
-  }
-  if (sumWeights == 0.f)
-    return false;
-  float r = random() * sumWeights;
-  int i = 0;
-  while (i < RESERVOIR_SIZE && r >= weights[i]) {
-    r -= weights[i];
-    ++i;
-  }
-  if (i == RESERVOIR_SIZE)
-    return false;
-
-  light = world.pointLights[lID[i]];
-  ls.direction = light.position - P;
-  float dist = length(ls.direction);
-  ls.direction = normalize(ls.direction);
-  float falloff = foc.c0 + foc.c1 * dist + foc.c2 * dist * dist;
-  ls.distance = dist * .9999f;
-  ls.radiance = light.radianceTowards(P) * (1.f / falloff) * 1.f
-      / (weights[i] / sumWeights
-          * (float(RESERVOIR_SIZE) / float(world.numPointLights)));
-  ls.pdf = BARNEY_INF;
-  return weights[i] != 0.f;
+  if (!hasEnvironment(w, r))
+    return 0.f;
+  return (w.envMapLight.texture ? w.envMapLight.pdf(dir) : ONE_OVER_FOUR_PI)
+      / float(lightCount(w, r));
 }
 
-inline __rtc_device bool sampleEnvLight(Light::Sample &ls,
-    const World::DD &world,
-    const Renderer::DD &renderer,
-    const vec3f P,
-    const vec3f N,
-    Random &random,
-    bool dbg)
+inline __rtc_device bool sampleLights(Light::Sample &s,
+    const World::DD &w,
+    const Renderer::DD &r,
+    vec3f P,
+    Random &random)
 {
-  /* in barney, the environment is either a explicit hdri map (in
-     EnvMapLight); or a uniform brightness of 'renderer.ambientRadiance' */
-  if (world.envMapLight.texture) {
-    ls = world.envMapLight.sample(random, dbg);
+  const int count = lightCount(w, r);
+  if (!count)
+    return false;
+  int index = min(int(random() * count), count - 1);
+  s = {};
+  s.selectionProbability = 1.f / float(count);
+  if (index < w.numQuadLights) {
+    const auto &light = w.quadLights[index];
+    const vec3f delta =
+        light.corner + random() * light.edge0 + random() * light.edge1 - P;
+    const float d2 = dot(delta, delta);
+    if (!(d2 > 0.f) || !(light.area > 0.f))
+      return false;
+    s.distance = sqrtf(d2);
+    s.direction = delta / s.distance;
+    const float cosine = -dot(light.normal, s.direction);
+    if (!(cosine > 0.f))
+      return false;
+    s.radiance = light.emission;
+    s.pdf = d2 / (light.area * cosine);
+  } else if ((index -= w.numQuadLights) < w.numDirLights) {
+    const auto &light = w.dirLights[index];
+    s.direction = -light.direction;
+    s.distance = BARNEY_INF;
+    s.radiance = light.color * light.radiance;
+    s.delta = true;
+  } else if ((index -= w.numDirLights) < w.numPointLights) {
+    const auto &light = w.pointLights[index];
+    const vec3f delta = light.position - P;
+    const float d2 = dot(delta, delta);
+    if (!(d2 > 0.f))
+      return false;
+    s.distance = sqrtf(d2);
+    s.direction = delta / s.distance;
+    s.radiance = light.radianceTowards(P) / d2;
+    s.delta = true;
   } else {
-    ls.direction = randomDirection(random);
-    ls.distance = BARNEY_INF;
-    if (N != vec3f(0.f)) {
-      ls.radiance = TWO_PI * renderer.ambientRadiance;
-      if (dot(ls.direction, N) < 0.f)
-        ls.direction = -ls.direction;
-      ls.pdf = ONE_OVER_TWO_PI;
+    if (w.envMapLight.texture) {
+      s = w.envMapLight.sample(random);
+      s.selectionProbability = 1.f / float(count);
     } else {
-      ls.radiance = FOUR_PI * renderer.ambientRadiance;
-      ls.pdf = ONE_OVER_FOUR_PI;
+      s.direction = randomDirection(random);
+      s.distance = BARNEY_INF;
+      s.radiance = vec3f(r.ambientRadiance);
+      s.pdf = ONE_OVER_FOUR_PI;
     }
+    s.environment = true;
   }
-  return true;
-}
-
-inline __rtc_device bool sampleLights(Light::Sample &ls,
-    const World::DD &world,
-    const Renderer::DD &renderer,
-    const vec3f P,
-    const vec3f Ng,
-    Random &random,
-#if USE_MIS
-    bool &lightNeedsMIS,
-    bool &lightIsDirLight,
-#endif
-    bool dbg)
-{
-#if USE_MIS
-  lightNeedsMIS = false;
-#endif
-
-#if ENV_LIGHT_SAMPLING
-  Light::Sample els;
-  float elsWeight = (sampleEnvLight(els, world, renderer, P, Ng, random, dbg)
-          ? (reduce_max(els.radiance))
-          : 0.f);
-#else
-  Light::Sample els;
-  float elsWeight = 0.f;
-#endif
-
-  Light::Sample als;
-  float alsWeight = (sampleAreaLights(als, world, P, Ng, random, dbg)
-          ? (reduce_max(als.radiance) / als.pdf)
-          : 0.f);
-  Light::Sample dls;
-  float dlsWeight = (sampleDirLights(dls, world, renderer, P, Ng, random, dbg)
-          ? (reduce_max(dls.radiance))
-          : 0.f);
-  Light::Sample pls;
-  float plsWeight = (samplePointLights(pls, world, renderer, P, Ng, random, dbg)
-          ? (reduce_max(pls.radiance))
-          : 0.f);
-
-  float sumWeights = alsWeight + dlsWeight + elsWeight + plsWeight;
-  if (sumWeights == 0.f)
-    return false;
-
-  elsWeight *= 1.f / sumWeights;
-  alsWeight *= 1.f / sumWeights;
-  dlsWeight *= 1.f / sumWeights;
-  plsWeight *= 1.f / sumWeights;
-
-  float r = random();
-  if (r <= alsWeight) {
-    ls = als;
-    ls.radiance *= (1.f / alsWeight);
-#if ENV_LIGHT_SAMPLING
-  } else if (r <= alsWeight + elsWeight) {
-    ls = els;
-    ls.radiance *= (1.f / elsWeight);
-#if USE_MIS
-    lightNeedsMIS = true;
-#endif
-#endif
-  } else if (r <= alsWeight + elsWeight + plsWeight) {
-    ls = pls;
-    ls.radiance *= (1.f / plsWeight);
-#if USE_MIS
-    lightIsDirLight = true;
-#endif
-  } else {
-    ls = dls;
-    ls.radiance *= (1.f / dlsWeight);
-#if USE_MIS
-    lightIsDirLight = true;
-#endif
-  }
-  if (isnan(ls.pdf) || (ls.pdf <= 0.f))
-    return false;
-
-  return true;
-}
-
-inline __rtc_device float schlick(float cosine, float ref_idx)
-{
-  float r0 = (1.0f - ref_idx) / (1.0f + ref_idx);
-  r0 = r0 * r0;
-  return r0 + (1.0f - r0) * powf((1.0f - cosine), 5.0f);
-}
-
-inline __rtc_device bool refract(
-    const vec3f &v, const vec3f &n, float ni_over_nt, vec3f &refracted)
-{
-  vec3f uv = normalize(v);
-  float dt = dot(uv, n);
-  float discriminant = 1.0f - ni_over_nt * ni_over_nt * (1 - dt * dt);
-  if (discriminant > 0.f) {
-    refracted = ni_over_nt * (uv - n * dt) - n * sqrtf(discriminant);
-    return true;
-  } else
-    return false;
+  return s.delta || (s.pdf > 0.f && isfinite(s.pdf));
 }
 
 inline __rtc_device vec3f radianceFromEnv(
-    const World::DD &world, const Renderer::DD &renderer, Ray &ray)
+    const World::DD &w, const Renderer::DD &r, const Ray &ray)
 {
-  auto &env = world.envMapLight;
-  if (env.texture) {
-    vec3f d = xfmVector(env.toLocal, normalize(ray.dir));
-    float theta = sphericalTheta(d);
-    float phi = sphericalPhi(d);
-    const float invPi = 1.f / (float)M_PI;
-    const float inv2Pi = 1.f / (2.f * (float)M_PI);
-    vec2f uv(phi * inv2Pi, theta * invPi);
-
-    vec4f color = rtc::tex2D<vec4f>(env.texture, uv.x, uv.y);
-    return env.scale * vec3f(color.x, color.y, color.z);
-  } else {
-    return renderer.ambientRadiance;
-  }
+  const auto &env = w.envMapLight;
+  if (!env.texture)
+    return vec3f(r.ambientRadiance);
+  const vec3f d = normalize(xfmVector(env.toLocal, normalize((vec3f)ray.dir)));
+  const vec4f c = rtc::tex2D<vec4f>(env.texture,
+      sphericalPhi(d) * ONE_OVER_TWO_PI,
+      sphericalTheta(d) * ONE_OVER_PI);
+  return env.scale * vec3f(c.x, c.y, c.z);
 }
 
-/*! if there _is_ a dedicated env-map light specified, this looks
-  up the background color from that map; otherwise, it returns
-  the 'ray.misscolor' that the primary ray generation has set as
-  default color for this ray */
-inline __rtc_device vec3f primaryRayMissColor(
-    const World::DD &world, const Renderer::DD &renderer, Ray &ray)
-{
-  if (world.envMapLight.texture)
-    return radianceFromEnv(world, renderer, ray);
-  return
-      // primary rays do store a default misscolor in the ray itself
-      // - we simply return this if there's no env-map.
-      (const vec3f &)ray.missColor;
-}
-
-/*! ugh - that should all go into material::AnariPhysical .... */
-inline __rtc_device void bounce(int rayID,
-    const World::DD &world,
+inline __rtc_device void bounce(const World::DD &world,
     const Renderer::DD &renderer,
     vec3f &fragment,
     Ray &ray,
     PathState &state,
     Ray &shadowRay,
     PathState &shadowState,
-    int pathDepth)
+    int depth)
 {
-  const float EPS = 1e-4f;
-
-  const bool hadNoIntersection = !ray.hadHit();
-  const vec3f incomingThroughput = state.throughput;
-
-  bool dbg = 0 && ray.dbg();
-
+  const bool missed = !ray.hadHit();
   if (ray.isShadowRay) {
-    // ==================================================================
-    // shadow ray = all we have to do is add carried radiance if it
-    // reached the light, and discards
-    // ==================================================================
-
-    if (hadNoIntersection) {
-      fragment =
-#if USE_MIS
-          (float)state.misWeight *
-#endif
-          (vec3f)state.throughput;
-    }
-
-    // this path is done.
-    shadowRay.tMax = -1.f;
+    if (missed)
+      fragment = (vec3f)state.throughput * (float)state.misWeight;
     ray.tMax = -1.f;
     return;
   }
-
-  vec3f Ng = ray.getN();
-  const bool isVolumeHit = (Ng == vec3f(0.f));
-  if (!isVolumeHit)
-    Ng = normalize(Ng);
-  const bool hitWasOnFront = dot((vec3f)ray.dir, Ng) < 0.f;
-  vec3f Ngff = hitWasOnFront ? Ng : -Ng;
-
-  if (hadNoIntersection) {
-    // ==================================================================
-    // regular ray that did NOT hit ANYTHING
-    // ==================================================================
-    if (pathDepth == 0) {
-      // ----------------------------------------------------------------
-      // PRIMARY ray that didn't hit anything -> background
-      // ----------------------------------------------------------------
-      fragment = primaryRayMissColor(world, renderer, ray);
-    } else {
-      // ----------------------------------------------------------------
-      // SECONDARY ray that didn't hit anything -> env-light
-      // ----------------------------------------------------------------
-      // this path had at least one bounce, but now bounced into
-      // nothingness - compute env-light contribution, and weigh it
-      // with the path's carried throughput.
-#if ENV_LIGHT_SAMPLING
-#if USE_MIS
-      const vec3f fromEnv = radianceFromEnv(world, renderer, ray);
-      fragment = (vec3f)state.throughput * fromEnv * (float)state.misWeight;
-
-#else
-      fragment =
-          ray.isSpecular ? radianceFromEnv(world, renderer, path) : vec3f(0.f);
-#endif
-#else
-      const vec3f fromEnv = radianceFromEnv(world, renderer, ray);
-      fragment = state.throughput * fromEnv;
-#endif
-    }
-    // no outgoing rays; this path is done.
+  if (missed) {
+    fragment = depth == 0
+        ? (world.envMapLight.texture
+                  ? radianceFromEnv(world, renderer, ray)
+                  : vec3f(ray.missColor.x, ray.missColor.y, ray.missColor.z))
+        : (vec3f)state.throughput * radianceFromEnv(world, renderer, ray)
+            * (float)state.misWeight;
     ray.tMax = -1.f;
     return;
   }
-
-  // ==================================================================
-  // this ray DID hit something: compute its local frame buffer
-  // contribution at this hit point (if any), and generate secondary
-  // ray and shadow ray (if applicable), with proper weights.
-  // ==================================================================
-  Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));
+  const vec3f Ng = ray.getGeometricNormal();
+  const bool volume = Ng == vec3f(0.f);
+  const vec3f V = -normalize((vec3f)ray.dir);
+  const bool front = dot(Ng, V) > 0.f;
+  const vec3f Ngff = front ? Ng : -Ng;
   const PackedBSDF bsdf = ray.getBSDF();
-
-  // Emitted radiance at this hit, weighted by the path throughput
-  // carried into this vertex. This makes an emissive surface (or
-  // volume) visible along the camera/bounce path; it does not yet act
-  // as a light source for the rest of the scene (geometry lights are a
-  // separate topic).
-  const vec3f emission = bsdf.getEmission(dbg);
-  if (reduce_max(emission) > 0.f)
-    fragment += incomingThroughput * emission;
-
+  const vec3f incoming = state.throughput;
+  fragment += incoming * bsdf.getEmission();
+  if (!volume)
+    ray.isInMedium = !front;
   DG dg;
   dg.P = ray.P;
-  dg.Ng = Ng;
-  dg.Ns = Ng;
-  dg.wo = -normalize((vec3f)ray.dir);
+  dg.Ng = Ngff;
+  dg.Ns = ray.getShadingNormal();
+  dg.wo = V;
   dg.insideMedium = ray.isInMedium;
-
-  // if the ray is a volume hit we want it offset it into the
-  // direction the ray came from (otherwise we have a chance of
-  // the shadow ray or boucne ray to terminate right where the
-  // original ray ended; for others we want to offset based on
-  // normal */
-  const float offsetEpsilon = safe_eps(EPS, dg.P);
-  vec3f frontFacingSurfaceOffset = (isVolumeHit ? dg.wo : Ngff);
-
-  // ==================================================================
-  // FIRST, let us look at generating any shadow rays, if
-  // applicable; this way we can later modify the incoming ray in
-  // place when we generate the outgoing ray.
-  // ==================================================================
-  Light::Sample ls;
-  // todo check if BSDF is perfectly specular
-#if USE_MIS
-  bool lightNeedsMIS = false;
-  bool lightIsDirLight = false;
-#endif
-  if (sampleLights(ls,
-          world,
-          renderer,
-          dg.P,
-          Ngff,
-          random,
-#if USE_MIS
-          lightNeedsMIS,
-          lightIsDirLight,
-#endif
-          dbg)) {
-    EvalRes f_r = bsdf.eval(dg, ls.direction, dbg);
-
-    if (!f_r.valid() || reduce_max(f_r.value) < 1e-4f) {
-      shadowRay.tMax = -1.f;
-    } else {
-#ifdef CLAMP_F_R
-      f_r.value = min(f_r.value, vec3f(CLAMP_F_R));
-#endif
-      vec3f tp_sr = (incomingThroughput) * (isinf(ls.pdf) ? 1.f : rcp(ls.pdf))
-          * f_r.value * ls.radiance
-
-          * (isVolumeHit ? 1.f
-                         : (ONE_OVER_PI * fabsf(dot(dg.Ng, ls.direction))));
-
+  const float epsilon = safe_eps(1e-4f, dg.P);
+  Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));
+  Light::Sample light;
+  if (sampleLights(light, world, renderer, dg.P, random)) {
+    const EvalRes e = bsdf.evalProjected(dg, light.direction);
+    const float probability =
+        light.selectionProbability * (light.delta ? 1.f : light.pdf);
+    if (probability > 0.f && reduce_max(e.value) > 0.f) {
+      const vec3f offset =
+          volume ? V : (dot(Ngff, light.direction) > 0.f ? Ngff : -Ngff);
       makeShadowRay(shadowRay,
           shadowState,
-          /* thrghhpt */ tp_sr,
-          /* surface: */ dg.P + offsetEpsilon * frontFacingSurfaceOffset,
-          /* to light */ ls.direction,
-          /* length   */ ls.distance * (1.f - 2.f * offsetEpsilon));
+          incoming * e.value * light.radiance / probability,
+          dg.P + epsilon * offset,
+          light.direction,
+          light.distance * (1.f - 2.f * epsilon));
       shadowRay.rngSeed = ray.rngSeed;
       ray.rngSeed.next(std::bit_cast<uint32_t>(ray.tMax));
-
       shadowRay._dbg = ray._dbg;
       shadowRay.crosshair = ray.crosshair;
       shadowState.pixelID = state.pixelID;
-
-      shadowState.misWeight = 1.f;
-#if USE_MIS
-      if (!lightIsDirLight && lightNeedsMIS) {
-        float pdf_lightRay_lightDir = world.envMapLight.pdf(ls.direction);
-        float pdf_scatterRay_lightDir = bsdf.pdf(dg, ls.direction);
-        // compute MIS weight weight that shadow direction
-        shadowState.misWeight = pdf_lightRay_lightDir
-            / (pdf_lightRay_lightDir + pdf_scatterRay_lightDir + 1e-10f);
-        // and if it's too small for any reason, kill the shadow
-        // ray
-        if ((float)shadowState.misWeight < 1e-5f)
-          shadowRay.tMax = -1.f;
-      }
-#endif
+      // Quad lights have no intersectable geometry; there is no competing
+      // BSDF estimator for them. Discrete directions never compete either.
+      shadowState.misWeight = light.environment
+          ? probability / (probability + bsdf.pdf(dg, light.direction))
+          : 1.f;
     }
   }
-
-  // ==================================================================
-  // now, let's decide what to do with the ray itself
-  // ==================================================================
-
-  // if we exceeded max depth we die, one way or another.
-  if (pathDepth >= MAX_PATH_DEPTH) {
-    ray.tMax = -1.f;
+  ray.tMax = -1.f;
+  if (depth >= 10)
     return;
-  }
-  // now per default, "create" a valid scatter ray.
-  ray.clearHit();
-  ray.tMax = BARNEY_INF;
-
-  ScatterResult scatterResult;
-  bsdf.scatter(scatterResult, dg, random, dbg);
-
-#ifndef NDEBUG
-  if (scatterResult.type == ScatterResult::INVALID)
-    printf("broken BSDF, doesn't set scatter type!\n");
-#endif
-  if (!scatterResult.valid() || scatterResult.pdf <= 1e-6f)
+  ScatterResult s;
+  bsdf.scatter(s, dg, random);
+  if (!s.valid())
     return;
-
-  if (scatterResult.type == ScatterResult::VOLUME) {
+  const bool transmission = s.event == ScatterResult::TRANSMISSION;
+  if (!volume
+      && (transmission ? dot(Ngff, s.dir) >= 0.f : dot(Ngff, s.dir) <= 0.f))
+    return;
+  if (s.event == ScatterResult::VOLUME_EVENT) {
 #if BARNEY_USE_MULTI_SCATTERING
-    if (!renderer.volumeMultiScatter) {
-      ray.tMax = -1.f;
+    if (!renderer.volumeMultiScatter
+        || state.numVolumeBounces >= renderer.maxVolumeBounces)
       return;
-    }
-    if (state.numVolumeBounces >= renderer.maxVolumeBounces) {
-      ray.tMax = -1.f;
-      return;
-    }
     state.numVolumeBounces = state.numVolumeBounces + 1;
 #else
-#if SCI_VIS_MODE
-    // sci vis mode: volumes do shadow, but nothing more
-    ray.tMax = -1.f;
     return;
-#else
-    // treat volume scatter like a diffuse scatter.
-    scatterResult.type = ScatterResult::DIFFUSE;
-#endif
 #endif
   }
-
-  if (
-#if BARNEY_USE_MULTI_SCATTERING
-      scatterResult.type == ScatterResult::DIFFUSE
-#else
-      scatterResult.type == ScatterResult::DIFFUSE
-      || scatterResult.type == ScatterResult::VOLUME
-#endif
-  ) {
-    if (state.numDiffuseBounces >= MAX_DIFFUSE_BOUNCES) {
-      ray.tMax = -1.f;
+  if (s.type == ScatterResult::DIFFUSE) {
+    if (state.numDiffuseBounces >= 1)
       return;
-    }
     state.numDiffuseBounces = state.numDiffuseBounces + 1;
   }
-  ray.isSpecular = (scatterResult.type == ScatterResult::SPECULAR);
-
+  ray.clearHit();
+  ray.tMax = BARNEY_INF;
+  ray.dir = normalize(s.dir);
   ray.org = dg.P
-      + scatterResult.offsetDirection * offsetEpsilon
-          * frontFacingSurfaceOffset;
-
-  ray.dir = normalize(scatterResult.dir);
-
-  vec3f scatterFactor = scatterResult.f_r
-      * (isVolumeHit ? 1.f : fabsf(dot(dg.Ng, normalize(ray.dir))))
-      / (isinf(scatterResult.pdf) ? 1.f : (scatterResult.pdf + 1e-10f));
-
-  // uhhhh.... this is TOTALLY wrong, but let's limit how much
-  // each bounce can increase the throughput of a ray ... this
-  // makes fireflies go away (well, makes them go 'less', but can
-  // lose a lot of envergy if the brdf sample code isn't close to
-  // the actual brdf.
-  scatterFactor = min(scatterFactor, vec3f(2.5f));
-
-  state.throughput = state.throughput * scatterFactor;
-  if (scatterResult.changedMedium)
+      + epsilon * (volume ? (vec3f)ray.dir : (transmission ? -Ngff : Ngff));
+  ray.isSpecular = s.delta;
+  if (transmission)
     ray.isInMedium = !ray.isInMedium;
-
-#if USE_MIS
-  if (lightNeedsMIS && !isinf(scatterResult.pdf)) {
-    float pdf_scatterRay_scatterDir = bsdf.pdf(dg, ray.dir);
-    float pdf_lightRay_scatterDir = world.envMapLight.pdf(ray.dir);
-
-    state.misWeight = pdf_scatterRay_scatterDir
-        / (pdf_scatterRay_scatterDir + pdf_lightRay_scatterDir);
-  } else {
-    state.misWeight = 1.f;
-  }
+  state.throughput = incoming * s.weight;
+  const float lightPdf = environmentProbability(world, renderer, ray.dir);
+  state.misWeight = s.delta ? 1.f : s.pdf / (s.pdf + lightPdf);
+}
 #endif
-} /* bounce() */
-#endif // device code
 
 __rtc_global void _shadeRays(const rtc::ComputeInterface &rt,
     World::DD world,
@@ -688,50 +237,20 @@ __rtc_global void _shadeRays(const rtc::ComputeInterface &rt,
     ;
 #else
 {
-  int tid = rt.getThreadIdx().x + rt.getBlockIdx().x * rt.getBlockDim().x;
+  const int tid = rt.getThreadIdx().x + rt.getBlockIdx().x * rt.getBlockDim().x;
   if (tid >= numRays)
     return;
-
   Ray ray = readQueue.rays[tid];
-
   PathState state = readQueue.states[tid];
-#ifdef NDEBUG
-  enum
-  {
-    dbg = false
-  };
-#else
-  bool dbg = ray.dbg();
-#endif
-  /* note(iw): IMHO pixels that did _not_ hit any geometry should
-     have an alpha value of 0, even if they did comptue a 'color'
-     from the env map. However, TSD blends its renderd image over
-     a black background, in which case that blends away background
-     pixels, so for now turn that off. The "right" fix for this
-     would be for TSD to handle alpha properly. */
-#define COMPUTE_PROPER_ALPHA_CHANNEL 1
-  float alpha = (generation == 0) ?
-#if COMPUTE_PROPER_ALPHA_CHANNEL
-                                  (ray.hadHit() ? 1.f : ray.missColor.w)
-#else
-                                  1.f
-#endif
-                                  : 0.f;
-  float incomingZ = ray.tMax;
-  vec3f incomingN = ray.hadHit() ? ray.getN() : vec3f(0.f);
-
-  // what we'll add into the frame buffer
-  vec3f fragment = 0.f;
-  // create a (potential) shadow ray, and init to 'invalid'
+  const float alpha =
+      generation == 0 ? (ray.hadHit() ? 1.f : ray.missColor.w) : 0.f;
+  const float incomingZ = ray.tMax;
+  const vec3f incomingN = ray.hadHit() ? ray.getShadingNormal() : vec3f(0.f);
+  vec3f fragment(0.f);
   Ray shadowRay;
   PathState shadowState;
   shadowRay.tMax = -1.f;
-
-  // bounce that ray on the scene, possibly generating a) a fragment
-  // to add to frame buffer; b) a outgoing ray (in-place
-  // modification of 'path'); and/or c) a shadow ray
-  bounce(tid,
-      world,
+  bounce(world,
       renderer,
       fragment,
       ray,
@@ -739,57 +258,25 @@ __rtc_global void _shadeRays(const rtc::ComputeInterface &rt,
       shadowRay,
       shadowState,
       generation);
-
 #ifndef NDEBUG
-  if (ray.crosshair && !dbg)
-    // create a red crosshair pattern around the debug pixel by
-    // setting these pixel fragments to red.
+  if (ray.crosshair && !ray.dbg())
     fragment = vec3f(1.f, 0.f, 0.f);
 #endif
-
-  // write shadow and bounce ray(s), if any were generated
   if (shadowRay.tMax > 0.f) {
-    int pos = rt.atomicAdd(d_nextWritePos, 1);
+    const int pos = rt.atomicAdd(d_nextWritePos, 1);
     writeQueue.rays[pos] = shadowRay;
     writeQueue.states[pos] = shadowState;
   }
   if (ray.tMax > 0.f) {
-    int pos = rt.atomicAdd(d_nextWritePos, 1);
+    const int pos = rt.atomicAdd(d_nextWritePos, 1);
     writeQueue.rays[pos] = ray;
     writeQueue.states[pos] = state;
   }
-
-  // and write the shade fragment, if generated
-  int tileID = int(state.pixelID / pixelsPerTile);
-  int tileOfs = int(state.pixelID % pixelsPerTile);
-  vec4f &valueToAccumInto = accumTiles[tileID].accum[tileOfs];
-
-#if DENOISE
-  vec3f &valueToAccumNormalInto = accumTiles[tileID].normal[tileOfs];
-#endif
-
-  // ==================================================================
-  // add to accum buffer. be careful of two things:
-  //
-  // a) since each pixel could have two DIFFERENT rays in the
-  // queue (shadow ray and bounce ray) we cannot simply 'add', but
-  // have to use an atomic add, because these could be in the same
-  // warp.
-  //
-  // b) since we don't have an explicit frame buffer clear we
-  // still have to make sure each pixel is written - not added -
-  // exactly once in the first generation of the first frame.
-  // ==================================================================
-
-  // clamping ...
-  float clampMax = 10.f * (1 + accumID);
-  fragment = min(fragment, vec3f(clampMax));
-
+  const int tileID = int(state.pixelID / pixelsPerTile);
+  const int tileOfs = int(state.pixelID % pixelsPerTile);
+  vec4f &out = accumTiles[tileID].accum[tileOfs];
   if (accumID == 0 && generation == 0) {
-    // first gen of first frame HAS to plain-write a value so later frames can
-    valueToAccumInto = vec4f(fragment.x, fragment.y, fragment.z, alpha);
-
-    // write aux buffers (depth, normal, hitIDs
+    out = vec4f(fragment.x, fragment.y, fragment.z, alpha);
     accumTiles[tileID].normal[tileOfs] = incomingN;
     if (auxTiles.depth)
       auxTiles.depth[tileID].f[tileOfs] = incomingZ;
@@ -799,49 +286,39 @@ __rtc_global void _shadeRays(const rtc::ComputeInterface &rt,
       auxTiles.objID[tileID].ui[tileOfs] = readQueue.hitIDs[tid].objID;
     if (auxTiles.instID)
       auxTiles.instID[tileID].ui[tileOfs] = readQueue.hitIDs[tid].instID;
-
     if (auxTiles.motion && camera.haveMotionMatrices && incomingZ < 1e19f) {
       const int instID = readQueue.hitIDs[tid].instID;
-      const vec3f world_hit = ray.P;
-      const vec3f prev_world =
-          (world.motionDeltas && instID >= 0 && instID < world.numMotionDeltas)
-          ? xfmPoint(world.motionDeltas[instID], world_hit)
-          : world_hit;
-
+      const vec3f worldHit = ray.P;
+      const vec3f prevWorld =
+          world.motionDeltas && instID >= 0 && instID < world.numMotionDeltas
+          ? xfmPoint(world.motionDeltas[instID], worldHit)
+          : worldHit;
       auto reproject = [](const float *m, vec3f p) {
         const float x = m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12];
         const float y = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
         const float w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
-        const float invW = (w != 0.f) ? 1.f / w : 0.f;
+        const float invW = w != 0.f ? 1.f / w : 0.f;
         return vec2f(x * invW, y * invW);
       };
-      const vec2f curr_ndc = reproject(camera.currViewProj, world_hit);
-      const vec2f prev_ndc = reproject(camera.prevViewProj, prev_world);
-
-      const vec2f delta_ndc = 0.5f * (curr_ndc - prev_ndc);
+      const vec2f delta = .5f
+          * (reproject(camera.currViewProj, worldHit)
+              - reproject(camera.prevViewProj, prevWorld));
       auxTiles.motion[tileID].mv[tileOfs] =
-          vec2f(delta_ndc.x * (float)fbSize.x, delta_ndc.y * (float)fbSize.y);
+          vec2f(delta.x * fbSize.x, delta.y * fbSize.y);
     }
-
   } else {
     if (generation == 0) {
-      if (alpha > 0.f) {
-        rt.atomicAdd(&valueToAccumInto.w, alpha);
-      }
-      if (auxTiles.depth && incomingZ < auxTiles.depth[tileID].f[tileOfs]) {
+      if (alpha > 0.f)
+        rt.atomicAdd(&out.w, alpha);
+      if (auxTiles.depth && incomingZ < auxTiles.depth[tileID].f[tileOfs])
         auxTiles.depth[tileID].f[tileOfs] = incomingZ;
-      }
     }
-    // we're either an accumulated frame, or a non-primary bounce
-    // of the first frame; either way we'll accumulate color and
-    // ignore anything else.
-
     if (fragment.x > 0.f)
-      rt.atomicAdd(&valueToAccumInto.x, fragment.x);
+      rt.atomicAdd(&out.x, fragment.x);
     if (fragment.y > 0.f)
-      rt.atomicAdd(&valueToAccumInto.y, fragment.y);
+      rt.atomicAdd(&out.y, fragment.y);
     if (fragment.z > 0.f)
-      rt.atomicAdd(&valueToAccumInto.z, fragment.z);
+      rt.atomicAdd(&out.z, fragment.z);
   }
 }
 #endif
@@ -853,7 +330,6 @@ void Context::shadeRaysLocally(Renderer *renderer,
     int generation,
     uint32_t rngSeed)
 {
-  int slotIdx = 0;
   const Camera::DD devCamera = camera->getDD();
   const vec2i fbSize = fb->getNumPixels();
   for (auto slotModel : model->modelSlots) {
@@ -861,34 +337,26 @@ void Context::shadeRaysLocally(Renderer *renderer,
     for (auto device : *world->devices) {
       SetActiveGPU forDuration(device);
       RayQueue *rayQueue = device->rayQueue;
-      device->rayQueue->resetWriteQueue();
-
-      TiledFB *devFB = fb->getFor(device);
-      int numRays = rayQueue->numActive;
+      rayQueue->resetWriteQueue();
+      const int numRays = rayQueue->numActive;
       if (numRays == 0)
         continue;
-      int bs = 128;
-      int nb = divRoundUp(numRays, bs);
-      World::DD devWorld = world->getDD(device);
-      Renderer::DD devRenderer = renderer->getDD(device);
-      if (FromEnv::logQueues) {
-        std::stringstream ss;
-        ss << "#bn" << myRank() << ": ## ray queue kernel SHADE " << std::endl
-           << "  from " << rayQueue->traceAndShadeReadQueue.rays << " + "
-           << rayQueue->traceAndShadeReadQueue.states << std::endl
-           << "  to   " << rayQueue->receiveAndShadeWriteQueue.rays << " + "
-           << rayQueue->receiveAndShadeWriteQueue.states << std::endl;
-        std::cout << ss.str();
-      }
-
-      __rtc_launch( // device
-          device->rtc,
-          // kernel
+      const int bs = 128, nb = divRoundUp(numRays, bs);
+      TiledFB *devFB = fb->getFor(device);
+      const World::DD devWorld = world->getDD(device);
+      const Renderer::DD devRenderer = renderer->getDD(device);
+      if (FromEnv::logQueues)
+        std::cout << "#bn" << myRank() << ": ## ray queue kernel SHADE "
+                  << std::endl
+                  << "  from " << rayQueue->traceAndShadeReadQueue.rays << " + "
+                  << rayQueue->traceAndShadeReadQueue.states << std::endl
+                  << "  to " << rayQueue->receiveAndShadeWriteQueue.rays
+                  << " + " << rayQueue->receiveAndShadeWriteQueue.states
+                  << std::endl;
+      __rtc_launch(device->rtc,
           _shadeRays,
-          // config
           nb,
           bs,
-          // args
           devWorld,
           devRenderer,
           devCamera,
@@ -902,12 +370,7 @@ void Context::shadeRaysLocally(Renderer *renderer,
           rayQueue->_d_nextWritePos,
           generation);
     }
-    slotIdx++;
   }
-
-  // ------------------------------------------------------------------
-  // wait for kernel to complete, and swap queues
-  // ------------------------------------------------------------------
   for (auto device : *devices) {
     SetActiveGPU forDuration(device);
     device->rtc->sync();
@@ -915,6 +378,5 @@ void Context::shadeRaysLocally(Renderer *renderer,
     device->rayQueue->numActive = device->rayQueue->readNumActive();
   }
 }
-
 } // namespace native
 } // namespace BARNEY_NS
