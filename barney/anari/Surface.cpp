@@ -91,7 +91,17 @@ namespace BARNEY_NS {
         return;
       bnSetObject(m_bnGeom, "material", m_material->getBarneyMaterial());
       bnSet1i(m_bnGeom, "userID", m_id);
-      m_geometry->setBarneyParameters(m_bnGeom);
+      // Rebinding mesh arrays would replace triangulated/converted data handles
+      // and invalidate device tangents on instance-only world rebuilds.
+      const bool mesh = std::string_view(m_geometry->bnSubtype()) == "triangles";
+      if (!mesh || m_boundMesh != m_geometry.get()
+          || m_meshFinalized != m_geometry->lastFinalized()) {
+        m_geometry->setBarneyParameters(m_bnGeom);
+        m_boundMesh = m_geometry.get();
+        m_meshFinalized = m_geometry->lastFinalized();
+      } else {
+        m_geometry->setAttributes(m_bnGeom, Geometry::AttributeUpdate::MaterialAttributes);
+      }
       bnCommit(m_bnGeom);
     }
 
@@ -100,6 +110,8 @@ namespace BARNEY_NS {
       if (m_bnGeom)
         bnRelease(m_bnGeom);
       m_bnGeom = nullptr;
+      m_boundMesh = nullptr;
+      m_meshFinalized = 0;
     }
 
   }

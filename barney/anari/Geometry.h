@@ -25,9 +25,11 @@ namespace BARNEY_NS {
       virtual const char *bnSubtype() const = 0;
       virtual void setBarneyParameters(BNGeom geom) = 0;
       virtual box3 bounds() const = 0;
+      enum class AttributeUpdate { All, MaterialAttributes };
+      virtual void setAttributes(BNGeom geom,
+                                 AttributeUpdate update = AttributeUpdate::All);
 
     protected:
-      virtual void setAttributes(BNGeom geom);
       std::array<math::float4, 5>                  m_constantAttributes;
       std::array<helium::IntrusivePtr<Array1D>, 5> m_primitiveAttributes;
       std::array<helium::IntrusivePtr<Array1D>, 5> m_vertexAttributes;
@@ -137,15 +139,20 @@ namespace BARNEY_NS {
       const char *bnSubtype() const override;
       box3 bounds() const override;
 
-      void setAttributes(BNGeom geom) override;
+      void setAttributes(BNGeom geom, AttributeUpdate update) override;
 
     private:
       helium::ChangeObserverPtr<Array1D> m_index;
       helium::ChangeObserverPtr<Array1D> m_vertexPosition;
       helium::ChangeObserverPtr<Array1D> m_vertexNormal;
-      helium::IntrusivePtr<Array1D> m_vertexTangent;
-      helium::IntrusivePtr<Array1D> m_faceVaryingTangent;
+      helium::ChangeObserverPtr<Array1D> m_vertexTangent;
+      helium::ChangeObserverPtr<Array1D> m_faceVaryingTangent;
+      helium::ChangeObserverPtr<Array1D> m_vertexUV;
+      helium::ChangeObserverPtr<Array1D> m_faceUV;
+      helium::ChangeObserverPtr<Array1D> m_faceNormal;
       std::vector<int> m_generatedIndices;
+      bool m_validVertexTangent = false;
+      bool m_validFaceTangent = false;
     };
 
     struct Triangle : public Geometry
@@ -159,16 +166,21 @@ namespace BARNEY_NS {
       const char *bnSubtype() const override;
       box3 bounds() const override;
 
-      void setAttributes(BNGeom geom) override;
+      void setAttributes(BNGeom geom, AttributeUpdate update) override;
     
     private:
       helium::ChangeObserverPtr<Array1D> m_index;
       helium::ChangeObserverPtr<Array1D> m_vertexPosition;
       helium::ChangeObserverPtr<Array1D> m_vertexNormal;
-      helium::IntrusivePtr<Array1D> m_vertexTangent;
-      helium::IntrusivePtr<Array1D> m_faceVaryingTangent;
+      helium::ChangeObserverPtr<Array1D> m_vertexTangent;
+      helium::ChangeObserverPtr<Array1D> m_faceVaryingTangent;
+      helium::ChangeObserverPtr<Array1D> m_vertexUV;
+      helium::ChangeObserverPtr<Array1D> m_faceUV;
+      helium::ChangeObserverPtr<Array1D> m_faceNormal;
       std::array<helium::IntrusivePtr<Array1D>, 6> m_faceVaryingAttributes;
       std::vector<int> m_generatedIndices;
+      bool m_validVertexTangent = false;
+      bool m_validFaceTangent = false;
     };
 
   }
