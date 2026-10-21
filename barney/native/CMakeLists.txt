@@ -81,6 +81,8 @@ set(HOST_SOURCES
   geometry/Geometry.cpp
   geometry/Triangles.h
   geometry/Triangles.cpp
+  geometry/TangentFrames.h
+  geometry/TangentFrames.cu
   geometry/Cylinders.h
   geometry/Cylinders.cpp
   geometry/Capsules.h
@@ -232,4 +234,20 @@ if (BARNEY_BUILD_BSDF_TESTS)
   rtc_library_properties(bsdf_quality_${backend})
   add_test(NAME bsdf_quality_${backend} COMMAND bsdf_quality_${backend})
   set_tests_properties(bsdf_quality_${backend} PROPERTIES TIMEOUT 180)
+endif()
+
+if (BARNEY_BUILD_TANGENT_TESTS)
+  add_executable(tangent_generation_${backend}
+    ${PROJECT_SOURCE_DIR}/tests/tangent_generation.cpp)
+  target_link_libraries(tangent_generation_${backend} PRIVATE barney_${backend}_static)
+  rtc_library_properties(tangent_generation_${backend})
+  add_executable(anari_tangent_generation_${backend}
+    ${PROJECT_SOURCE_DIR}/tests/anari_tangent_generation.cpp)
+  target_link_libraries(anari_tangent_generation_${backend} PRIVATE
+    anari_library_barney_${backend}_static)
+  rtc_library_properties(anari_tangent_generation_${backend})
+  add_test(NAME tangent_generation_${backend}
+    COMMAND tangent_generation_${backend})
+  add_test(NAME anari_tangent_generation_${backend}
+    COMMAND anari_tangent_generation_${backend})
 endif()
