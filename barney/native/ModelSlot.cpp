@@ -8,6 +8,7 @@
 #include "native/common/Texture.h"
 #include "native/light/Light.h"
 #include "native/geometry/Geometry.h"
+#include "native/common/InstanceTransform.h"
 
 namespace BARNEY_NS {
   namespace native {
@@ -45,6 +46,9 @@ namespace BARNEY_NS {
                                  const affine3f *xfms,
                                  int numUserInstances)
     {
+      for (int i=0;i<numUserInstances;i++)
+        if (!usableInstanceTransform(xfms[i]))
+          throw std::runtime_error("invalid instance transform: requires a finite inverse");
       instances.groups.resize(numUserInstances);
       instances.xfms.resize(numUserInstances);
       for (int i=0;i<numUserInstances;i++) {
@@ -191,6 +195,9 @@ namespace BARNEY_NS {
                   << std::endl;
         return;
       }
+      for (int i=0;i<numInstances;i++)
+        if (!usableInstanceTransform(xfms[i]))
+          throw std::runtime_error("invalid instance transform: requires a finite inverse");
       std::copy(xfms, xfms + numInstances, instances.xfms.data());
 
       updateWorldLightsFromInstances();
