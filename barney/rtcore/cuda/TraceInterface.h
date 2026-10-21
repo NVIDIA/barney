@@ -49,6 +49,9 @@ namespace BARNEY_NS {
 
       InstanceGroup::DeviceRecord *model
         = (InstanceGroup::DeviceRecord *)_world;
+      // Rejecting invalid instance transforms can leave an empty world.
+      if (!model || !model->instanceRecords)
+        return;
       
       ::cuBQL::ray3f ray((const cuBQL::vec3f&)world.org,
                          (const cuBQL::vec3f&)world.dir,
@@ -141,7 +144,7 @@ namespace BARNEY_NS {
     inline __device__
     vec3f TraceInterface::transformNormalFromObjectToWorldSpace(vec3f v) const
     {
-      return xfmVector(currentInstance->objectToWorldXfm.l,
+      return xfmVector(currentInstance->worldToObjectXfm.l.transposed(),
                        (const owl::common::vec3f &)v);
     }
 
@@ -162,7 +165,7 @@ namespace BARNEY_NS {
     inline __device__
     vec3f TraceInterface::transformNormalFromWorldToObjectSpace(vec3f v) const
     {
-      return xfmVector(currentInstance->worldToObjectXfm.l,
+      return xfmVector(currentInstance->objectToWorldXfm.l.transposed(),
                        (const owl::common::vec3f &)v);
     }
 
