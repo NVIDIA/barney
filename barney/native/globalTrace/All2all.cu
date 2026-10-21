@@ -25,7 +25,6 @@ namespace BARNEY_NS {
       rayOnly[tid].dir = rayQueue[tid].dir;
       rayOnly[tid].tMax = rayQueue[tid].tMax;
       rayOnly[tid].isInMedium = rayQueue[tid].isInMedium;
-      rayOnly[tid].isSpecular = rayQueue[tid].isSpecular;
       rayOnly[tid].isShadowRay = rayQueue[tid].isShadowRay;
       rayOnly[tid].dbg = rayQueue[tid]._dbg;
 #endif
@@ -43,7 +42,8 @@ namespace BARNEY_NS {
 
       hitOnly[tid].tHit = rayQueue[tid].tMax;
       hitOnly[tid].P = rayQueue[tid].P;
-      hitOnly[tid].N = rayQueue[tid].N;
+      hitOnly[tid].shadingNormal = rayQueue[tid].shadingNormal;
+      hitOnly[tid].geometricNormal = rayQueue[tid].geometricNormal;
       hitOnly[tid].hitBSDF = rayQueue[tid].hitBSDF;
       hitOnly[tid].bsdfType = rayQueue[tid].bsdfType;
 #endif
@@ -69,7 +69,6 @@ namespace BARNEY_NS {
       rayQueue[tid].dir = rayOnly[tid].dir;
       rayQueue[tid].tMax = rayOnly[tid].tMax;
       rayQueue[tid].isInMedium = rayOnly[tid].isInMedium;
-      rayQueue[tid].isSpecular = rayOnly[tid].isSpecular;
       rayQueue[tid].isShadowRay = rayOnly[tid].isShadowRay;
       rayQueue[tid]._dbg = rayOnly[tid].dbg;
       rayQueue[tid].bsdfType = PackedBSDF::NONE;
@@ -97,7 +96,8 @@ namespace BARNEY_NS {
         ray.bsdfType = hit->bsdfType;
         ray.hitBSDF  =  hit->hitBSDF;
         ray.P        =  hit->P;
-        ray.N        =  hit->N;
+        ray.shadingNormal = hit->shadingNormal;
+        ray.geometricNormal = hit->geometricNormal;
       }
       rayQueueThisRank[tid] = ray;
 #endif

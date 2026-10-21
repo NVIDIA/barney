@@ -67,6 +67,11 @@ namespace BARNEY_NS {
       float sum = 0.f;
       for (int i=0;i<textureDims.y;i++)
         sum += cdf_y[i];
+      if (!(sum > 0.f)) {
+        for (int i=0;i<textureDims.y;i++)
+          cdf_y[i] = float(i+1)/float(textureDims.y);
+        return;
+      }
       float rcp_sum = 1.f/sum;
         
       sum = 0.f;
@@ -121,6 +126,12 @@ namespace BARNEY_NS {
       for (int ix=0;ix<textureDims.x;ix++) 
         sum += thisLine_pdf[ix];
         
+      if (!(sum > 0.f)) {
+        for (int ix=0;ix<textureDims.x;ix++)
+          thisLine_pdf[ix] = float(ix+1)/float(textureDims.x);
+        cdf_y[y] = 0.f;
+        return;
+      }
       float rcp_sum = 1.f/sum;
       sum = 0.f;
       for (int ix=0;ix<textureDims.x;ix++) {

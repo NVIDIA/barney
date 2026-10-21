@@ -145,29 +145,27 @@ namespace BARNEY_NS {
         const vec3f bc = (const vec3f&)baseColor;
         bsdf.baseColor = bc;
       }
-      // Resolve the shading normal to world space. The geometric world
-      // normal is the fallback and the frame a normal map is perturbed
-      // through.
-      const vec3f Ng = normalize((const vec3f&)hitData.worldNormal);
+      // Map both lobes independently around the interpolated shading frame.
+      const vec3f Ns = normalize((const vec3f&)hitData.worldShadingNormal);
       if (this->normal.type == PossiblyMappedParameter::SAMPLER) {
         const vec3f ts = (const vec3f)normal;
         const vec3f N = packedBSDF::physicallybased::applyNormalMap
-          (ts,Ng,hitData.worldTangent);
+          (ts,Ns,hitData.worldTangent);
         bsdf.normal = N;
       } else {
         const vec3f N = normalize((const vec3f)normal);
-        const vec3f Nw = (dot(N,N) > 1e-12f) ? N : Ng;
+        const vec3f Nw = (dot(N,N) > 1e-12f) ? N : Ns;
         bsdf.normal = Nw;
       }
       // Clearcoat normal: same TBN treatment as the base normal.
       if (this->clearcoatNormal.type == PossiblyMappedParameter::SAMPLER) {
         const vec3f ts = (const vec3f)clearcoatNormal;
         const vec3f Nc = packedBSDF::physicallybased::applyNormalMap
-          (ts,Ng,hitData.worldTangent);
+          (ts,Ns,hitData.worldTangent);
         bsdf.clearcoatNormal = Nc;
       } else {
         const vec3f Nc = normalize((const vec3f)clearcoatNormal);
-        const vec3f Nw = (dot(Nc,Nc) > 1e-12f) ? Nc : Ng;
+        const vec3f Nw = (dot(Nc,Nc) > 1e-12f) ? Nc : Ns;
         bsdf.clearcoatNormal = Nw;
       }
       bsdf.metallic = metallic.x;

@@ -28,7 +28,6 @@ namespace BARNEY_NS {
       float    tMax;
       struct {
         uint32_t isInMedium : 1;
-        uint32_t isSpecular : 1;
         uint32_t isShadowRay: 1;
         uint32_t dbg        : 1;
         uint32_t crosshair  : 1;
@@ -38,11 +37,24 @@ namespace BARNEY_NS {
     struct HitOnly {
       float tHit;
       vec3f       P;
-      vec3h       N;
+      vec3h       shadingNormal;
+      vec3h       geometricNormal;
       uint16_t bsdfType   : 4;
       PackedBSDF::Data hitBSDF;
     };
     
+#if RTC_DEVICE_CODE
+    inline __rtc_device vec3f normalizeSurfaceNormal(vec3f n)
+    {
+      // Scaling first avoids float overflow/underflow for valid inverse
+      // transforms. Preserve the zero normal that identifies volume hits.
+      const float scale = max(fabsf(n.x),max(fabsf(n.y),fabsf(n.z)));
+      if (scale == 0.f) return n;
+      n = n / scale;
+      return normalize(n);
+    }
+#endif
+
     struct Ray {
 #if RTC_DEVICE_CODE
       inline __rtc_device void setVolumeHit(vec3f P, float t, vec3f albedo,
@@ -56,7 +68,8 @@ namespace BARNEY_NS {
       inline __rtc_device void setVolumeHit(vec3f P, float t, vec3f albedo);
       inline __rtc_device PackedBSDF getBSDF() const;
       inline __rtc_device void setHit(vec3f P, vec3f N, float t,
-                                    const PackedBSDF &packedBSDF);
+                                    const PackedBSDF &packedBSDF,
+                                    vec3f geometricNormal = vec3f(0.f));
       
       inline __rtc_device bool hadHit() const { return bsdfType != PackedBSDF::NONE; }
       inline __rtc_device void clearHit(float newTMax = BARNEY_INF)
@@ -64,7 +77,12 @@ namespace BARNEY_NS {
       
       inline __rtc_device void packNormal(vec3f N);
       inline __rtc_device vec3f unpackNormal() const;
-      inline __rtc_device vec3f getN() const  { return unpackNormal(); }
+      inline __rtc_device vec3f getShadingNormal() const  { return unpackNormal(); }
+      inline __rtc_device vec3f getGeometricNormal() const
+      {
+        const vec3f n = (vec3f)geometricNormal;
+        return dot(n,n) > 0.f ? normalize(n) : n;
+      }
 #endif
 
       vec3f   org;
@@ -73,11 +91,11 @@ namespace BARNEY_NS {
       RNGSeed rngSeed;
 
       vec3f       P;
-      vec3h       N;
+      vec3h       shadingNormal;
+      vec3h       geometricNormal;
       struct {
         uint16_t bsdfType   : 4;
         uint16_t isInMedium : 1;
-        uint16_t isSpecular : 1;
         uint16_t isShadowRay: 1;
         uint16_t crosshair  : 1;
         uint16_t _dbg       : 1;
@@ -99,9 +117,13 @@ namespace BARNEY_NS {
     }
     
     inline __rtc_device void Ray::setHit(vec3f P, vec3f N, float t,
-                                       const PackedBSDF &packedBSDF)
+                                       const PackedBSDF &packedBSDF,
+                                       vec3f geometricNormal)
     {
       this->packNormal(N);
+      const vec3f ng = normalizeSurfaceNormal(geometricNormal);
+      this->geometricNormal = dot(ng,ng) > 0.f
+        ? ng : normalizeSurfaceNormal(N);
       this->hitBSDF   = packedBSDF.data;
       this->bsdfType  = packedBSDF.type;
       this->tMax      = t;
@@ -163,12 +185,13 @@ namespace BARNEY_NS {
 
     inline __rtc_device void Ray::packNormal(vec3f N)
     {
-      this->N = N;
+      this->shadingNormal = normalizeSurfaceNormal(N);
     }
   
     inline __rtc_device vec3f Ray::unpackNormal() const
     {
-      return (vec3f)N;
+      const vec3f n = (vec3f)shadingNormal;
+      return dot(n,n) > 0.f ? normalize(n) : n;
     }
     
     inline __rtc_device

@@ -127,7 +127,7 @@ namespace BARNEY_NS {
               hitData.objectNormal    = make_vec4f(N);
               hitData.worldPosition
                 = ti.transformPointFromObjectToWorldSpace(P);
-              hitData.worldNormal
+              hitData.worldShadingNormal
                 = normalize(ti.transformNormalFromObjectToWorldSpace(N));
           
               // trigger the anari attribute evaluation
@@ -172,7 +172,7 @@ namespace BARNEY_NS {
               hitData.objectNormal    = make_vec4f(N);
               hitData.worldPosition
                 = ti.transformPointFromObjectToWorldSpace(P);
-              hitData.worldNormal
+              hitData.worldShadingNormal
                 = normalize(ti.transformNormalFromObjectToWorldSpace((const vec3f&)N));
                     
               // trigger the anari attribute evaluation
@@ -233,7 +233,7 @@ namespace BARNEY_NS {
           hitData.objectNormal    = make_vec4f(N);
           hitData.worldPosition
             = ti.transformPointFromObjectToWorldSpace(P);
-          hitData.worldNormal
+          hitData.worldShadingNormal
             = normalize(ti.transformNormalFromObjectToWorldSpace((const vec3f&)N));
         
           // trigger the anari attribute evaluation
