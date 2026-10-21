@@ -118,7 +118,9 @@ namespace BARNEY_NS {
             (const vec3f &)hitData.objectTangent);
           const float handedness = (hitData.objectTangent.w < 0.f) ? -1.f : 1.f;
           hitData.worldTangent = make_vec4f(wt);
-          hitData.worldTangent.w = handedness;
+          // Normals use A^-T without a winding sign. Compensate the frame
+          // once here, keeping shared object-space tangents unchanged.
+          hitData.worldTangent.w = handedness * world.instanceOrientations[instID];
         }
 
         const DeviceMaterial &material

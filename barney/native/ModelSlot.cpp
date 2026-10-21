@@ -59,6 +59,7 @@ namespace BARNEY_NS {
           : Group::SP{};
       }
       std::copy(xfms,xfms+numUserInstances,instances.xfms.data());
+      world->setInstanceOrientations(instances.xfms);
       for (auto device : *devices) {
         device->sbtDirty = true;
         auto pld = getPLD(device);
@@ -199,6 +200,7 @@ namespace BARNEY_NS {
         if (!usableInstanceTransform(xfms[i]))
           throw std::runtime_error("invalid instance transform: requires a finite inverse");
       std::copy(xfms, xfms + numInstances, instances.xfms.data());
+      world->setInstanceOrientations(instances.xfms);
 
       updateWorldLightsFromInstances();
 
