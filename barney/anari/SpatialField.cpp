@@ -83,8 +83,8 @@ namespace BARNEY_NS {
     void StructuredRegularField::commitParameters()
     {
       Object::commitParameters();
-      m_data = getParamObject<helium::Array3D>("data");
-      m_origin = getParam<helium::float3>("origin", helium::float3(0.f));
+      m_data    = getParamObject<helium::Array3D>("data");
+      m_origin  = getParam<helium::float3>("origin",  helium::float3(0.f));
       m_spacing = getParam<helium::float3>("spacing", helium::float3(1.f));
       m_dims = m_data->size();
     }
@@ -124,24 +124,12 @@ namespace BARNEY_NS {
         throw std::runtime_error("scalar type not implemented ...");
       }
 
-#if 1
-      BNTextureData td = bnTextureData3DCreate(
-                                               context, slot, barneyType, dims.x, dims.y, dims.z, m_data->data());
+      BNTextureData td
+        = bnTextureData3DCreate(context, slot, barneyType,
+                                dims.x, dims.y, dims.z,
+                                m_data->data());
       bnSetObject(sf, "textureData", td);
       bnRelease(td);
-#else
-      BNTexture3D texture = bnTexture3DCreate(context,
-                                              slot,
-                                              barneyType,
-                                              dims.x,
-                                              dims.y,
-                                              dims.z,
-                                              m_data->data(),
-                                              BN_TEXTURE_LINEAR,
-                                              BN_TEXTURE_CLAMP);
-      bnSetObject(sf, "texture", texture);
-      bnRelease(texture);
-#endif
       bnSet3i(sf, "dims", dims.x, dims.y, dims.z);
       bnSetVec(sf, "gridOrigin", m_origin);
       bnSetVec(sf, "gridSpacing", m_spacing);
@@ -198,15 +186,11 @@ namespace BARNEY_NS {
       // Data might not be aligned, make sure we get something that works for
       // nanovdb.
       auto hostbuffer = nanovdb::HostBuffer::create(m_data->size());
-      // std::memcpy(hostbuffer.data(), m_data->data(AddressSpace::HOST), m_data->size());
       std::memcpy(hostbuffer.data(), m_data->data(), m_data->size());
 
       auto gridHandle = nanovdb::GridHandle<>(std::move(hostbuffer));
       std::optional<nanovdb::GridMetaData> m_gridMetadata;
       m_gridMetadata = *gridHandle.gridMetaData();
-
-      // m_deviceBuffer.upload(
-      //                       static_cast<const std::byte *>(gridHandle.data()), gridHandle.size());
 
       if (gridHandle.gridCount() != 1) {
         reportMessage(ANARI_SEVERITY_WARNING,
@@ -222,8 +206,6 @@ namespace BARNEY_NS {
       auto voxelSize = m_gridMetadata->voxelSize();
       (glm::vec3&)m_voxelSize
         = glm::vec3(voxelSize[0], voxelSize[1], voxelSize[2]);
-
-
 
       //=======================================================
       // get (or create) and populate bn field
@@ -282,11 +264,11 @@ namespace BARNEY_NS {
       Object::commitParameters();
 
       m_params.vertexPosition = getParamObject<helium::Array1D>("vertex.position");
-      m_params.vertexData = getParamObject<helium::Array1D>("vertex.data");
-      m_params.cellData = getParamObject<helium::Array1D>("cell.data");
-      m_params.index = getParamObject<helium::Array1D>("index");
-      m_params.cellType = getParamObject<helium::Array1D>("cell.type");
-      m_params.cellBegin = getParamObject<helium::Array1D>("cell.begin");
+      m_params.vertexData     = getParamObject<helium::Array1D>("vertex.data");
+      m_params.cellData       = getParamObject<helium::Array1D>("cell.data");
+      m_params.index          = getParamObject<helium::Array1D>("index");
+      m_params.cellType       = getParamObject<helium::Array1D>("cell.type");
+      m_params.cellBegin      = getParamObject<helium::Array1D>("cell.begin");
       if (!m_params.cellBegin) // some older apps use "cell.index"
         m_params.cellBegin = getParamObject<helium::Array1D>("cell.index");
     }
@@ -363,7 +345,6 @@ namespace BARNEY_NS {
         m_bounds.insert(vertexPositions[i]);
 
       uint32_t *index32{nullptr};
-      // uint64_t *index64{nullptr};
       if (m_params.index->elementType() == ANARI_UINT32)
         index32 = (uint32_t *)m_params.index->beginAs<uint32_t>();
       else if (m_params.index->elementType() == ANARI_UINT64)
@@ -378,7 +359,6 @@ namespace BARNEY_NS {
       if (m_params.cellBegin->elementType() == ANARI_UINT32)
         index32 = (uint32_t *)m_params.index->beginAs<uint32_t>();
       else if (m_params.cellBegin->elementType() == ANARI_UINT64)
-        //      index64 = (uint64_t *)m_params.index->beginAs<uint64_t>();
         reportMessage(ANARI_SEVERITY_ERROR,
                       "'unstructured:index' - we only support 32-bit indices");
       else {
@@ -500,6 +480,8 @@ namespace BARNEY_NS {
       m_params.blockDims = getParamObject<helium::Array1D>("block.dimensions");
       m_params.blockLevel = getParamObject<helium::Array1D>("block.level");
       m_params.data = getParamObject<helium::Array1D>("data");
+      m_params.origin = getParam<helium::float3>("origin", helium::float3(0.f));
+      m_params.spacing = getParam<helium::float3>("spacing", helium::float3(1.f));
     }
 
     void BlockStructuredField::finalize()
@@ -527,10 +509,10 @@ namespace BARNEY_NS {
         return;
       }
 
-      size_t numBlocks = m_params.blockLevel->totalSize();
+      size_t numBlocks   = m_params.blockLevel->totalSize();
       auto *blockOrigins = m_params.blockOrigins->beginAs<math::int3>();
-      auto *blockDims = m_params.blockDims->beginAs<math::int3>();
-      auto *blockLevels = m_params.blockLevel->beginAs<int>();
+      auto *blockDims    = m_params.blockDims->beginAs<math::int3>();
+      auto *blockLevels  = m_params.blockLevel->beginAs<int>();
 
       m_generatedBlockOffsets.resize(numBlocks);
       
@@ -544,14 +526,14 @@ namespace BARNEY_NS {
         vec3i org = (const vec3i&)blockOrigins[i];
         vec3i dims = (const vec3i&)blockDims[i];
 
-        // m_generatedBlockOrigins.push_back(bounds.lower);
-        // m_generatedBlockDims.push_back(dims);
-        // m_generatedBlockLevels.push_back(level);
-        // m_generatedBlockOffsets.push_back(dims.x * size_t(dims.y) * dims.z);
-        // maxLevel = std::max(maxLevel, level);
         float cellSize = 1.f/(1<<blockLevels[i]);
-        box3f bb(cellSize*vec3f(org),
-                 cellSize*vec3f(org+dims));
+        const vec3f lower = (const vec3f &)m_params.origin
+          + (const vec3f &)m_params.spacing
+          * (cellSize*(vec3f(org)-.5f));
+        const vec3f upper = (const vec3f &)m_params.origin
+          + (const vec3f &)m_params.spacing
+          * (cellSize*(vec3f(org+dims)+.5f));
+        box3f bb(lower,upper);
         worldBounds.extend(bb);
         
         m_generatedBlockOffsets[i] = nextOffset;
@@ -614,11 +596,13 @@ namespace BARNEY_NS {
                   m_generatedBlockOffsets.data());
       }
       
-      bnSetData(sf, "scalars", m_bnData.scalars);
+      bnSetData(sf, "scalars",      m_bnData.scalars);
       bnSetData(sf, "grid.origins", m_bnData.blockOrigins);
-      bnSetData(sf, "grid.dims", m_bnData.blockDims);
-      bnSetData(sf, "grid.levels", m_bnData.blockLevels);
+      bnSetData(sf, "grid.dims",    m_bnData.blockDims);
+      bnSetData(sf, "grid.levels",  m_bnData.blockLevels);
       bnSetData(sf, "grid.offsets", m_bnData.blockOffsets);
+      bnSetVec (sf, "gridOrigin",   m_params.origin);
+      bnSetVec (sf, "gridSpacing",  m_params.spacing);
       bnCommit(sf);
     }
 

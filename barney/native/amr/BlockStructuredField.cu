@@ -144,6 +144,8 @@ namespace BARNEY_NS {
       dd.perBlock.offsets = (const uint64_t *)perBlock.offsets->getDD(device);
 
       dd.scalars      = (const float *)scalars->getDD(device);
+      dd.gridOrigin   = gridOrigin;
+      dd.gridSpacing  = gridSpacing;
     
       dd.numBlocks    = (int)perBlock.origins->count;
 
@@ -248,6 +250,21 @@ namespace BARNEY_NS {
         return true;
       }
 
+      return false;
+    }
+
+    bool BlockStructuredField::set3f(const std::string &member,
+                                     const vec3f &value)
+    {
+      if (ScalarField::set3f(member,value)) return true;
+      if (member == "gridOrigin") {
+        gridOrigin = value;
+        return true;
+      }
+      if (member == "gridSpacing") {
+        gridSpacing = value;
+        return true;
+      }
       return false;
     }
 

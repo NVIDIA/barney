@@ -58,6 +58,8 @@ namespace BARNEY_NS {
           const int   *levels;
           const uint64_t *offsets;
         } perBlock;
+        vec3f gridOrigin;
+        vec3f gridSpacing;
         int numBlocks;
       };
 
@@ -72,6 +74,7 @@ namespace BARNEY_NS {
       void commit() override;
       bool setData(const std::string &member,
                    const std::shared_ptr<Data> &value) override;
+      bool set3f(const std::string &member, const vec3f &value) override;
       /*! @} */
       // ------------------------------------------------------------------
     
@@ -93,6 +96,8 @@ namespace BARNEY_NS {
         PODData::SP/*1l*/ offsets    = 0;
       } perBlock;
       PODData::SP/*1f*/   scalars     = 0;
+      vec3f               gridOrigin  {0.f};
+      vec3f               gridSpacing {1.f};
       int                 numBlocks   = 0;
     };
 
@@ -112,6 +117,8 @@ namespace BARNEY_NS {
       vec3i dims;
       int   level;
       float cellSize;
+      vec3f gridOrigin;
+      vec3f gridSpacing;
       const float *scalars;
     };
   
@@ -132,9 +139,11 @@ namespace BARNEY_NS {
 
       if (!domain.contains(P)) return false;
 
-      const vec3f cellCenter000 = domain.lower+vec3f(block.cellSize);
+      const vec3f logicalP = (P-block.gridOrigin)/block.gridSpacing;
+      const vec3f cellCenter000
+        = (vec3f(block.origin)+.5f)*block.cellSize;
       const vec3f localPos
-        = (P-cellCenter000) / block.cellSize;
+        = (logicalP-cellCenter000) / block.cellSize;
     
       vec3f floor_localPos(floorf(localPos.x),
                            floorf(localPos.y),
@@ -224,8 +233,10 @@ namespace BARNEY_NS {
     box3f Block::cellBounds(const vec3i cellID) const
     {
       box3f cb;
-      cb.lower = (vec3f(origin+cellID)-.5f)*cellSize;
-      cb.upper = cb.lower + 2.f*cellSize;
+      const vec3f logicalLower = (vec3f(origin+cellID)-.5f)*cellSize;
+      cb.lower = gridOrigin + gridSpacing*logicalLower;
+      cb.upper = gridOrigin
+        + gridSpacing*(logicalLower + 2.f*vec3f(cellSize));
       return cb;
     }
 
@@ -242,8 +253,10 @@ namespace BARNEY_NS {
     box3f Block::getDomain() const
     {
       box3f cb;
-      cb.lower = (vec3f(origin)-.5f)*cellSize;
-      cb.upper = (vec3f(origin+dims)+.5f)*cellSize;
+      cb.lower = gridOrigin
+        + gridSpacing*((vec3f(origin)-.5f)*cellSize);
+      cb.upper = gridOrigin
+        + gridSpacing*((vec3f(origin+dims)+.5f)*cellSize);
       return cb;
     }
 
@@ -256,6 +269,8 @@ namespace BARNEY_NS {
       block.level    = dd.perBlock.levels[blockID];
       block.cellSize =
         1.f/(1<<block.level);
+      block.gridOrigin = dd.gridOrigin;
+      block.gridSpacing = dd.gridSpacing;
       block.scalars  = dd.scalars+dd.perBlock.offsets[blockID];
       return block;
     }
