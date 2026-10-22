@@ -27,7 +27,7 @@ enum Model { LAMBERT, PBR, NVISII };
 struct Parameters
 {
   Model model = LAMBERT;
-  DG dg{};
+  ShadingInteraction dg{};
   vec3f color = vec3f(.125f,.5f,.875f);
   vec3f normal = vec3f(0,0,1);
   float roughness = .5f, metallic = 0.f, specular = 0.f;
@@ -258,7 +258,7 @@ void checkEvaluation(const Case &test, const std::vector<vec3f> &directions,
                      const Evaluation &e)
 {
   const vec3f normal = test.p.model == PBR
-      ? normalize((vec3f)to_half(test.p.normal)) : test.p.dg.Ns;
+      ? normalize((vec3f)to_half(test.p.normal)) : test.p.dg.shadingNormal;
   for (size_t i = 0; i < directions.size(); ++i) {
     nonnegative(e.pdf[i],test.name+": invalid density");
     require(close(e.pdf[i],e.projected[i].pdf)
@@ -410,7 +410,7 @@ void runCase(rtc::Device *device, const Case &test)
     require(std::isfinite(dot(s[i].dir,s[i].dir))
             && std::abs(dot(s[i].dir,s[i].dir)-1.f) < 2e-5,
             test.name+": sample direction is not unit length");
-    const bool reflection = dot(test.p.dg.Ng,s[i].dir)*dot(test.p.dg.Ng,test.p.dg.wo) > 0.f;
+    const bool reflection = dot(test.p.dg.geometricNormal,s[i].dir)*dot(test.p.dg.geometricNormal,test.p.dg.wo) > 0.f;
     require(reflection == (s[i].event == ScatterResult::REFLECTION),
             test.name+": sample event disagrees with geometric side");
     if (s[i].delta) {
@@ -487,7 +487,7 @@ Case makeCase(Model model, float mu, const std::string &name)
   Case test;
   test.name = name;
   test.p.model = model;
-  test.p.dg.Ng = test.p.dg.Ns = vec3f(0,0,1);
+  test.p.dg.geometricNormal = test.p.dg.shadingNormal = vec3f(0,0,1);
   test.p.dg.wo = vec3f(std::sqrt(1-mu*mu),0,mu);
   return test;
 }
@@ -497,7 +497,7 @@ void capturedRegression(rtc::Device *device)
   auto test = makeCase(PBR,1.f,"captured PBR transmission");
   test.p.dg.wo = vec3f(fromBits(0x3f0a8d26),fromBits(0x3eba28bf),fromBits(0x3f421a32));
   test.p.normal = vec3f(fromBits(0x3f56e0ce),fromBits(0x3da4609e),fromBits(0x3f09a084));
-  test.p.dg.Ns = test.p.dg.Ng = test.p.normal;
+  test.p.dg.shadingNormal = test.p.dg.geometricNormal = test.p.normal;
   test.p.dg.insideMedium = true;
   test.p.color = vec3f(1.f);
   test.p.roughness = 0.f;

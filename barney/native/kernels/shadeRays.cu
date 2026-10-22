@@ -6,7 +6,7 @@
 #include "native/GlobalModel.h"
 #include "native/fb/FrameBuffer.h"
 #include "native/fb/TiledFB.h"
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 #include "native/render/RayQueue.h"
 #include "native/render/Renderer.h"
 #include "native/render/World.h"

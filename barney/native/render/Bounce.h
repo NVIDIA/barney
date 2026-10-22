@@ -132,34 +132,34 @@ inline __rtc_device void bounce(const World::DD &world,
     ray.tMax = -1.f;
     return;
   }
-  const vec3f Ng = ray.getGeometricNormal();
-  const bool volume = Ng == vec3f(0.f);
+  const vec3f geometricNormal = ray.getGeometricNormal();
+  const bool volume = geometricNormal == vec3f(0.f);
   const vec3f V = -normalize((vec3f)ray.dir);
-  const bool front = dot(Ng, V) > 0.f;
-  const vec3f Ngff = front ? Ng : -Ng;
+  const bool front = dot(geometricNormal, V) > 0.f;
+  const vec3f orientedGeometricNormal = front ? geometricNormal : -geometricNormal;
   const PackedBSDF bsdf = ray.getBSDF();
   const vec3f incoming = state.throughput;
   fragment += incoming * bsdf.getEmission();
-  DG dg;
-  dg.P = ray.P;
-  dg.Ng = Ngff;
-  dg.Ns = ray.getShadingNormal();
-  dg.wo = V;
-  dg.insideMedium = ray.isInMedium;
-  const float epsilon = safe_eps(1e-4f, dg.P);
+  ShadingInteraction interaction;
+  interaction.P = ray.P;
+  interaction.geometricNormal = orientedGeometricNormal;
+  interaction.shadingNormal = ray.getShadingNormal();
+  interaction.wo = V;
+  interaction.insideMedium = ray.isInMedium;
+  const float epsilon = safe_eps(1e-4f, interaction.P);
   Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));
   Light::Sample light;
-  if (sampleLights(light, world, renderer, dg.P, random)) {
-    const EvalRes e = bsdf.evalProjected(dg, light.direction);
+  if (sampleLights(light, world, renderer, interaction.P, random)) {
+    const EvalRes e = bsdf.evalProjected(interaction, light.direction);
     const float probability =
         light.selectionProbability * (light.delta ? 1.f : light.pdf);
     if (probability > 0.f && reduce_max(e.value) > 0.f) {
       const vec3f offset =
-          volume ? V : (dot(Ngff, light.direction) > 0.f ? Ngff : -Ngff);
+          volume ? V : (dot(orientedGeometricNormal, light.direction) > 0.f ? orientedGeometricNormal : -orientedGeometricNormal);
       makeShadowRay(shadowRay,
           shadowState,
           incoming * e.value * light.radiance / probability,
-          dg.P + epsilon * offset,
+          interaction.P + epsilon * offset,
           light.direction,
           light.distance * (1.f - 2.f * epsilon));
       shadowRay.rngSeed = ray.rngSeed;
@@ -178,12 +178,12 @@ inline __rtc_device void bounce(const World::DD &world,
   if (depth >= 10)
     return;
   ScatterResult s;
-  bsdf.scatter(s, dg, random);
+  bsdf.scatter(s, interaction, random);
   if (!s.valid())
     return;
   const bool transmission = s.event == ScatterResult::TRANSMISSION;
   if (!volume
-      && (transmission ? dot(Ngff, s.dir) >= 0.f : dot(Ngff, s.dir) <= 0.f))
+      && (transmission ? dot(orientedGeometricNormal, s.dir) >= 0.f : dot(orientedGeometricNormal, s.dir) <= 0.f))
     return;
   if (s.event == ScatterResult::VOLUME_EVENT) {
 #if BARNEY_USE_MULTI_SCATTERING
@@ -203,8 +203,8 @@ inline __rtc_device void bounce(const World::DD &world,
   ray.clearHit();
   ray.tMax = BARNEY_INF;
   ray.dir = normalize(s.dir);
-  ray.org = dg.P
-      + epsilon * (volume ? (vec3f)ray.dir : (transmission ? -Ngff : Ngff));
+  ray.org = interaction.P
+      + epsilon * (volume ? (vec3f)ray.dir : (transmission ? -orientedGeometricNormal : orientedGeometricNormal));
   if (transmission)
     ray.isInMedium = !ray.isInMedium;
   state.throughput = incoming * s.weight;

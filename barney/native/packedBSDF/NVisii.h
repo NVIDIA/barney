@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 
 namespace BARNEY_NS {
 namespace native {
@@ -86,9 +86,9 @@ struct NVisii
   {
     return .1f * (1.f - float(clearcoatGloss)) + .002f * float(clearcoatGloss);
   }
-  inline __rtc_device vec3f normal(const DG &dg) const
+  inline __rtc_device vec3f normal(const ShadingInteraction &interaction) const
   {
-    return dg.orientShadingNormal(dg.Ns);
+    return interaction.orientShadingNormal(interaction.shadingNormal);
   }
   inline __rtc_device vec4f probabilities() const
   {
@@ -99,16 +99,16 @@ struct NVisii
     const vec4f w(d + float(sheen), 1.f, float(clearcoat), t);
     return w / (w.x + w.y + w.z + w.w);
   }
-  inline __rtc_device EvalRes evaluate(DG dg, vec3f wi, bool projected) const
+  inline __rtc_device EvalRes evaluate(ShadingInteraction interaction, vec3f wi, bool projected) const
   {
     using namespace nvisii;
-    const auto frame = owl::common::frame(normal(dg));
-    const vec3f v = owl::common::xfmVector(frame.transposed(), dg.wo);
+    const auto frame = owl::common::frame(normal(interaction));
+    const vec3f v = owl::common::xfmVector(frame.transposed(), interaction.wo);
     const vec3f l = owl::common::xfmVector(frame.transposed(), wi);
     if (v.z <= 0.f || l.z == 0.f
-        || dot(dg.Ng, wi) * dot(dg.Ng, dg.wo) * l.z <= 0.f)
+        || dot(interaction.geometricNormal, wi) * dot(interaction.geometricNormal, interaction.wo) * l.z <= 0.f)
       return EvalRes::zero();
-    const float eta = dg.insideMedium ? float(ior) : 1.f / float(ior);
+    const float eta = interaction.insideMedium ? float(ior) : 1.f / float(ior);
     const float t = (1.f - float(metallic)) * float(specularTransmission);
     const vec4f p = probabilities();
     const vec3f color = (vec3f)baseColor;
@@ -173,29 +173,29 @@ struct NVisii
       value *= fabsf(l.z);
     return EvalRes(value, density);
   }
-  inline __rtc_device EvalRes eval(DG dg, vec3f wi, bool) const
+  inline __rtc_device EvalRes eval(ShadingInteraction interaction, vec3f wi, bool) const
   {
-    return evaluate(dg, wi, false);
+    return evaluate(interaction, wi, false);
   }
-  inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool) const
+  inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool) const
   {
-    return evaluate(dg, wi, true);
+    return evaluate(interaction, wi, true);
   }
-  inline __rtc_device float pdf(DG dg, vec3f wi, bool) const
+  inline __rtc_device float pdf(ShadingInteraction interaction, vec3f wi, bool) const
   {
-    return evaluate(dg, wi, false).pdf;
+    return evaluate(interaction, wi, false).pdf;
   }
 
   inline __rtc_device void scatter(
-      ScatterResult &s, const DG &dg, Random &r, bool dbg) const
+      ScatterResult &s, const ShadingInteraction &interaction, Random &r, bool dbg) const
   {
     using namespace nvisii;
     s = {};
-    const auto frame = owl::common::frame(normal(dg));
-    const vec3f v = owl::common::xfmVector(frame.transposed(), dg.wo);
+    const auto frame = owl::common::frame(normal(interaction));
+    const vec3f v = owl::common::xfmVector(frame.transposed(), interaction.wo);
     if (v.z <= 0.f)
       return;
-    const float eta = dg.insideMedium ? float(ior) : 1.f / float(ior);
+    const float eta = interaction.insideMedium ? float(ior) : 1.f / float(ior);
     const vec4f p = probabilities();
     const float u = r();
     vec3f l;
@@ -219,7 +219,7 @@ struct NVisii
       l = reflect(-v, h);
     } else {
       if (eta == 1.f) {
-        s.dir = -dg.wo;
+        s.dir = -interaction.wo;
         s.weight = (vec3f)baseColor
             * ((1.f - float(metallic)) * float(specularTransmission) / p.w);
         s.delta = true;
@@ -240,7 +240,7 @@ struct NVisii
     if (transmission ? l.z >= 0.f : l.z <= 0.f)
       return;
     s.dir = normalize(owl::common::xfmVector(frame, l));
-    const EvalRes e = evalProjected(dg, s.dir, dbg);
+    const EvalRes e = evalProjected(interaction, s.dir, dbg);
     if (!(e.pdf > 0.f) || !isfinite(e.pdf))
       return;
     s.pdf = e.pdf;
