@@ -1,7 +1,7 @@
 # Native scattering contract
 
 The native renderer and packed BSDFs share the contracts below. The interface
-lives in `barney/native/render/DG.h` and
+lives in `barney/native/render/ShadingInteraction.h` and
 `barney/native/packedBSDF/PackedBSDF.h`; integration and light selection live in
 `barney/native/kernels/shadeRays.cu`.
 
@@ -13,12 +13,12 @@ from the hit toward the light or next vertex. BSDF directions are unit vectors.
 “Shading” versus “geometric” describes a normal's role, not its coordinate space.
 
 - The geometric normal determines front/back classification, medium sidedness,
-  reflection/transmission support, and surface ray offsets. `DG::Ng` is oriented
+  reflection/transmission support, and surface ray offsets. `ShadingInteraction::geometricNormal` is oriented
   toward `wo`. Reflection stays on its side; transmission crosses it.
-- `DG::Ns` is the original interpolated shading normal, before material normal
+- `ShadingInteraction::shadingNormal` is the original interpolated shading normal, before material normal
   maps and before orientation. Material maps perturb this shading frame, not
   the geometric normal. Base and clearcoat maps are resolved independently.
-- `orientShadingNormal()` applies one shared sign, determined by `dot(Ng,Ns)`,
+- `orientShadingNormal()` applies one shared sign, determined by `dot(geometricNormal,shadingNormal)`,
   to the original or mapped normal. Mapped lobes are not independently flipped
   toward `wo`. A lobe facing away may therefore have no support.
 - Each lobe's shading normal determines its projection cosine. Clearcoat can
@@ -36,9 +36,9 @@ and after unpacking. A zero geometric normal identifies a volume hit.
 
 | Operation | `value` | `pdf` |
 | --- | --- | --- |
-| `eval(dg, wi)` | Raw BSDF, or albedo-weighted phase function | Marginal solid-angle density |
-| `evalProjected(dg, wi)` | BSDF with each lobe's incident cosine included | Same density |
-| `pdf(dg, wi)` | Not returned | Same density |
+| `eval(interaction, wi)` | Raw BSDF, or albedo-weighted phase function | Marginal solid-angle density |
+| `evalProjected(interaction, wi)` | BSDF with each lobe's incident cosine included | Same density |
+| `pdf(interaction, wi)` | Not returned | Same density |
 
 Neither evaluation operation divides by the PDF. A phase function has no surface
 projection, so its raw and projected values are identical. For layered surfaces,
@@ -53,7 +53,7 @@ is not renormalized to condition on acceptance.
 For a continuous sample:
 
 ```
-weight = evalProjected(dg, dir).value / pdf(dg, dir)
+weight = evalProjected(interaction, dir).value / pdf(interaction, dir)
 newThroughput = incomingThroughput * weight
 ```
 

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 
 namespace BARNEY_NS {
   namespace native {
@@ -17,22 +17,22 @@ namespace BARNEY_NS {
                                   float g=0.f);
 
         inline __rtc_device
-        float pdf(DG dg, vec3f wi, bool dbg) const;
+        float pdf(ShadingInteraction interaction, vec3f wi, bool dbg) const;
         
         inline __rtc_device
-        EvalRes eval(DG dg, vec3f wi, bool dbg) const;
+        EvalRes eval(ShadingInteraction interaction, vec3f wi, bool dbg) const;
         
         inline __rtc_device
         void scatter(ScatterResult &scatter,
-                     const DG &dg,
+                     const ShadingInteraction &interaction,
                      Random &random,
                      bool dbg) const;
 
         inline __rtc_device
         float hgPhase(float cosTheta) const;
 
-        inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg) const
-        { return eval(dg,wi,dbg); }
+        inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool dbg) const
+        { return eval(interaction,wi,dbg); }
 
         static inline __rtc_device
         vec3f sampleDirection(vec3f wi_in, float g, Random &random);
@@ -61,17 +61,17 @@ namespace BARNEY_NS {
       }
       
       inline __rtc_device
-      float HGPhase::pdf(DG dg, vec3f wi, bool dbg) const
+      float HGPhase::pdf(ShadingInteraction interaction, vec3f wi, bool dbg) const
       {
-        vec3f wi_in = normalize(-dg.wo);
+        vec3f wi_in = normalize(-interaction.wo);
         float cosTheta = dot(wi_in, normalize(wi));
         return hgPhase(cosTheta);
       }
         
       inline __rtc_device
-      EvalRes HGPhase::eval(DG dg, vec3f wi, bool dbg) const
+      EvalRes HGPhase::eval(ShadingInteraction interaction, vec3f wi, bool dbg) const
       {
-        float density = pdf(dg, wi, dbg);
+        float density = pdf(interaction, wi, dbg);
         return EvalRes(density * (const vec3f&)albedo, density);
       }
 
@@ -104,12 +104,12 @@ namespace BARNEY_NS {
 
       inline __rtc_device
       void HGPhase::scatter(ScatterResult &scatter,
-                          const DG &dg,
+                          const ShadingInteraction &interaction,
                           Random &random,
                           bool dbg) const
       {
         scatter = {};
-        vec3f wi_in = normalize(-dg.wo);
+        vec3f wi_in = normalize(-interaction.wo);
         scatter.dir = HGPhase::sampleDirection(wi_in, g, random);
         float density = hgPhase(dot(wi_in, scatter.dir));
         scatter.pdf = density;
@@ -124,18 +124,18 @@ namespace BARNEY_NS {
       struct SimplePhase {
         inline SimplePhase() = default;
         inline __rtc_device SimplePhase(vec3f color, float avg_reflectance=.7f);
-        inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg) const
-        { return eval(dg,wi,dbg); }
+        inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool dbg) const
+        { return eval(interaction,wi,dbg); }
 
         inline __rtc_device
-        float pdf(DG dg, vec3f wi, bool dbg) const;
+        float pdf(ShadingInteraction interaction, vec3f wi, bool dbg) const;
         
         inline __rtc_device
-        EvalRes eval(DG dg, vec3f wi, bool dbg) const;
+        EvalRes eval(ShadingInteraction interaction, vec3f wi, bool dbg) const;
         
         inline __rtc_device
         void scatter(ScatterResult &scatter,
-                     const DG &dg,
+                     const ShadingInteraction &interaction,
                      Random &random,
                      bool dbg) const;
         
@@ -149,11 +149,11 @@ namespace BARNEY_NS {
       }
       
       inline __rtc_device
-      float SimplePhase::pdf(DG dg, vec3f wi, bool dbg) const
+      float SimplePhase::pdf(ShadingInteraction interaction, vec3f wi, bool dbg) const
       { return ONE_OVER_FOUR_PI; }
         
       inline __rtc_device
-      EvalRes SimplePhase::eval(DG dg, vec3f wi, bool dbg) const
+      EvalRes SimplePhase::eval(ShadingInteraction interaction, vec3f wi, bool dbg) const
       {
         float density = ONE_OVER_FOUR_PI;
         return EvalRes(density*
@@ -162,7 +162,7 @@ namespace BARNEY_NS {
 
       inline __rtc_device
       void SimplePhase::scatter(ScatterResult &scatter,
-                          const DG &dg,
+                          const ShadingInteraction &interaction,
                           Random &random,
                           bool dbg) const
       {

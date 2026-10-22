@@ -7,7 +7,7 @@
 #include "native/light/Light.h"
 #include "native/DeviceGroup.h"
 #include "native/common/math.h"
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 
 /*! for debugging only - if enabled the envmap light will return a
   constant radiance no matter what map was specified */

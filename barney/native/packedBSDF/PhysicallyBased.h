@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 #include "native/render/HitAttributes.h"
 #include "native/common/half.h"
 #include <limits>
@@ -43,7 +43,7 @@ namespace BARNEY_NS {
         // Clearcoat is fixed to IOR 1.5 per glTF KHR_materials_clearcoat (F0 = 0.04).
         // A macro (not constexpr) so it is usable from __device__ code under
         // -rdc=true; the pi constants come from native/common/math.h
-        // (ONE_PI/TWO_PI/ONE_OVER_PI), which DG.h already pulls in.
+        // (ONE_PI/TWO_PI/ONE_OVER_PI), which ShadingInteraction.h already pulls in.
 #define CLEARCOAT_F0 0.04f
 
         inline __rtc_device float pow2(float v)
@@ -672,26 +672,26 @@ namespace BARNEY_NS {
         }
 
         // Density in solid angle, excluding discrete index-matched transmission.
-        inline __rtc_device float pdf(DG dg, const vec3f &wi, bool dbg) const
+        inline __rtc_device float pdf(ShadingInteraction interaction, const vec3f &wi, bool dbg) const
         {
-          return evaluate(dg,wi,dbg,true).pdf;
+          return evaluate(interaction,wi,dbg,true).pdf;
         }
 
-        inline __rtc_device EvalRes evalProjected(DG dg, const vec3f &wi, bool dbg) const
-        { return evaluate(dg,wi,dbg,true); }
+        inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, const vec3f &wi, bool dbg) const
+        { return evaluate(interaction,wi,dbg,true); }
 
-        inline __rtc_device EvalRes eval(DG dg, const vec3f &wi, bool dbg) const
-        { return evaluate(dg,wi,dbg,false); }
+        inline __rtc_device EvalRes eval(ShadingInteraction interaction, const vec3f &wi, bool dbg) const
+        { return evaluate(interaction,wi,dbg,false); }
 
-        inline __rtc_device EvalRes evaluate(DG dg, const vec3f &wi, bool dbg,
+        inline __rtc_device EvalRes evaluate(ShadingInteraction interaction, const vec3f &wi, bool dbg,
                                               bool projected) const
         {
           const PhysicallyBasedShadingState st = unpack();
-          const vec3f V = dg.wo;
-          const vec3f N = dg.orientShadingNormal(rtc::load(st.normal));
-          const float eta = dg.insideMedium ? st.ior : (1.0f / st.ior);
-          const vec3f Nc = dg.orientShadingNormal(rtc::load(st.clearcoatNormal));
-          const float side = dot(dg.Ng,wi)*dot(dg.Ng,V);
+          const vec3f V = interaction.wo;
+          const vec3f N = interaction.orientShadingNormal(rtc::load(st.normal));
+          const float eta = interaction.insideMedium ? st.ior : (1.0f / st.ior);
+          const vec3f Nc = interaction.orientShadingNormal(rtc::load(st.clearcoatNormal));
+          const float side = dot(interaction.geometricNormal,wi)*dot(interaction.geometricNormal,V);
           if (side == 0.f) return EvalRes::zero();
           return physicallybased::pbrEvaluate(&st, eta, N, Nc, V, wi,
                                                side > 0.f, projected);
@@ -705,16 +705,16 @@ namespace BARNEY_NS {
         // by the marginal density, including rough transmission. Index-matched
         // refraction is the only discrete event in this roughness-floor model.
         inline __rtc_device void scatter(ScatterResult &scatter,
-                                         const DG &dg,
+                                         const ShadingInteraction &interaction,
                                          Random &random,
                                          bool dbg) const
         {
           scatter = {};
           const PhysicallyBasedShadingState st = unpack();
-          const vec3f V = dg.wo;
-          const vec3f N = dg.orientShadingNormal(rtc::load(st.normal));
-          const vec3f Nc = dg.orientShadingNormal(rtc::load(st.clearcoatNormal));
-          const float eta = dg.insideMedium ? st.ior : (1.0f / st.ior);
+          const vec3f V = interaction.wo;
+          const vec3f N = interaction.orientShadingNormal(rtc::load(st.normal));
+          const vec3f Nc = interaction.orientShadingNormal(rtc::load(st.clearcoatNormal));
+          const float eta = interaction.insideMedium ? st.ior : (1.0f / st.ior);
 
           // Clearcoat lobe: pick with probability clearcoat*FcV(NcDotV). This
           // weight makes the entry-side attenuation cancel the (1-pick) divisor
@@ -726,15 +726,15 @@ namespace BARNEY_NS {
           const float clearcoatPick = saturate(st.clearcoat * FcV_world);
 
           auto finish = [&](vec3f L, ScatterResult::Type type, bool transmission=false) {
-            const float side = dot(dg.Ng,L)*dot(dg.Ng,V);
+            const float side = dot(interaction.geometricNormal,L)*dot(interaction.geometricNormal,V);
             if (transmission ? side >= 0.f : side <= 0.f) return;
-            const EvalRes e = evalProjected(dg,L,dbg);
+            const EvalRes e = evalProjected(interaction,L,dbg);
             if (!(e.pdf > 0.f) || !isfinite(e.pdf)) return;
             scatter.dir = L;
             scatter.pdf = e.pdf;
             scatter.weight = e.value/e.pdf;
             scatter.type = type;
-            scatter.event = dot(dg.Ng,L)*dot(dg.Ng,V) > 0.f ? ScatterResult::REFLECTION : ScatterResult::TRANSMISSION;
+            scatter.event = dot(interaction.geometricNormal,L)*dot(interaction.geometricNormal,V) > 0.f ? ScatterResult::REFLECTION : ScatterResult::TRANSMISSION;
             scatter.eta = scatter.event == ScatterResult::TRANSMISSION ? eta : 1.f;
           };
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 #include "native/render/HitAttributes.h"
 
 namespace BARNEY_NS {
@@ -17,36 +17,36 @@ struct Glass
   {
     return isShadowRay ? 0.f : 1.f;
   }
-  inline __rtc_device float pdf(DG, vec3f, bool) const
+  inline __rtc_device float pdf(ShadingInteraction, vec3f, bool) const
   {
     return 0.f;
   }
-  inline __rtc_device EvalRes eval(DG, vec3f, bool) const
+  inline __rtc_device EvalRes eval(ShadingInteraction, vec3f, bool) const
   {
     return EvalRes::zero();
   }
-  inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg) const
+  inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool dbg) const
   {
-    return eval(dg, wi, dbg);
+    return eval(interaction, wi, dbg);
   }
 
   inline __rtc_device void scatter(
-      ScatterResult &s, const DG &dg, Random &random, bool) const
+      ScatterResult &s, const ShadingInteraction &interaction, Random &random, bool) const
   {
     s = {};
-    const vec3f N = dg.orientShadingNormal(dg.Ns);
-    const float c = dot(N, dg.wo);
+    const vec3f N = interaction.orientShadingNormal(interaction.shadingNormal);
+    const float c = dot(N, interaction.wo);
     if (!(c > 0.f))
       return;
-    const float eta = dg.insideMedium ? ior : 1.f / ior;
+    const float eta = interaction.insideMedium ? ior : 1.f / ior;
     const float sin2 = eta * eta * max(0.f, 1.f - c * c);
     const float ct = sqrtf(max(0.f, 1.f - sin2));
     const float rp = (eta * c - ct) / (eta * c + ct);
     const float rs = (c - eta * ct) / (c + eta * ct);
     const float F = sin2 >= 1.f ? 1.f : 0.5f * (rp * rp + rs * rs);
     const bool reflection = random() < F;
-    s.dir = reflection ? reflect(-dg.wo, N) : refract(-dg.wo, N, eta);
-    if ((dot(dg.Ng, s.dir) * dot(dg.Ng, dg.wo) > 0.f) != reflection)
+    s.dir = reflection ? reflect(-interaction.wo, N) : refract(-interaction.wo, N, eta);
+    if ((dot(interaction.geometricNormal, s.dir) * dot(interaction.geometricNormal, interaction.wo) > 0.f) != reflection)
       return;
     s.weight = vec3f(reflection ? 1.f : eta * eta);
     s.delta = true;

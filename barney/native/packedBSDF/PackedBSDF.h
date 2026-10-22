@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 #include "native/packedBSDF/NVisii.h"
 #include "native/packedBSDF/Glass.h"
 #include "native/packedBSDF/Phase.h"
@@ -65,15 +65,15 @@ namespace BARNEY_NS {
       
       // World-space unit wi points away from the hit. Includes each surface
       // lobe's incident cosine; phase values are unchanged. PDF matches pdf().
-      inline __rtc_device EvalRes evalProjected(DG dg, vec3f wi, bool dbg=false) const
+      inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool dbg=false) const
       {
         switch (type) {
-        case TYPE_SimplePhase: return data.simplePhase.evalProjected(dg,wi,dbg);
-        case TYPE_HGPhase: return data.hgPhase.evalProjected(dg,wi,dbg);
-        case TYPE_NVisii: return data.nvisii.evalProjected(dg,wi,dbg);
-        case TYPE_Glass: return data.glass.evalProjected(dg,wi,dbg);
-        case TYPE_Lambertian: return data.lambertian.evalProjected(dg,wi,dbg);
-        case TYPE_PhysicallyBased: return data.physicallyBased.evalProjected(dg,wi,dbg);
+        case TYPE_SimplePhase: return data.simplePhase.evalProjected(interaction,wi,dbg);
+        case TYPE_HGPhase: return data.hgPhase.evalProjected(interaction,wi,dbg);
+        case TYPE_NVisii: return data.nvisii.evalProjected(interaction,wi,dbg);
+        case TYPE_Glass: return data.glass.evalProjected(interaction,wi,dbg);
+        case TYPE_Lambertian: return data.lambertian.evalProjected(interaction,wi,dbg);
+        case TYPE_PhysicallyBased: return data.physicallyBased.evalProjected(interaction,wi,dbg);
         default: return EvalRes::zero();
         }
       }
@@ -81,18 +81,18 @@ namespace BARNEY_NS {
       // Raw continuous BSDF (or albedo-weighted phase), without projection
       // or PDF division. Delta contributions are excluded.
       inline __rtc_device
-      EvalRes eval(DG dg, vec3f w_i, bool dbg=false) const;
+      EvalRes eval(ShadingInteraction interaction, vec3f w_i, bool dbg=false) const;
 
       // Marginal solid-angle density of scatter(), including lobe-selection
       // probabilities. Rejected samples are not renormalized; deltas excluded.
       inline __rtc_device
-      float pdf(DG dg, vec3f w_i, bool dbg=false) const;
+      float pdf(ShadingInteraction interaction, vec3f w_i, bool dbg=false) const;
       
       // Continuous weight = evalProjected().value / marginal PDF. Discrete
       // weights include event-probability compensation, with delta=true/pdf=0.
       inline __rtc_device
       void scatter(ScatterResult &scatter,
-                   const DG &dg,
+                   const ShadingInteraction &interaction,
                    Random &random,
                    bool dbg=false) const;
 
@@ -107,62 +107,62 @@ namespace BARNEY_NS {
 
 #if RTC_DEVICE_CODE
     inline __rtc_device
-    EvalRes PackedBSDF::eval(DG dg, vec3f w_i, bool dbg) const
+    EvalRes PackedBSDF::eval(ShadingInteraction interaction, vec3f w_i, bool dbg) const
     {
       if (type == TYPE_SimplePhase)
-        return data.simplePhase.eval(dg,w_i,dbg);
+        return data.simplePhase.eval(interaction,w_i,dbg);
       
       if (type == TYPE_HGPhase)
-        return data.hgPhase.eval(dg,w_i,dbg);
+        return data.hgPhase.eval(interaction,w_i,dbg);
       
       if (type == TYPE_NVisii)
-        return data.nvisii.eval(dg,w_i,dbg);
+        return data.nvisii.eval(interaction,w_i,dbg);
       if (type == TYPE_Glass)
-        return data.glass.eval(dg,w_i,dbg);
+        return data.glass.eval(interaction,w_i,dbg);
       if (type == TYPE_Lambertian)
-        return data.lambertian.eval(dg,w_i,dbg);
+        return data.lambertian.eval(interaction,w_i,dbg);
       if (type == TYPE_PhysicallyBased)
-        return data.physicallyBased.eval(dg,w_i,dbg);
+        return data.physicallyBased.eval(interaction,w_i,dbg);
       return EvalRes();
     }
     
     inline __rtc_device
-    float PackedBSDF::pdf(DG dg, vec3f w_i, bool dbg) const
+    float PackedBSDF::pdf(ShadingInteraction interaction, vec3f w_i, bool dbg) const
     {
       if (type == TYPE_NVisii)
-        return data.nvisii.pdf(dg,w_i,dbg);
+        return data.nvisii.pdf(interaction,w_i,dbg);
       if (type == TYPE_Glass)
-        return data.glass.pdf(dg,w_i,dbg);
+        return data.glass.pdf(interaction,w_i,dbg);
       if (type == TYPE_Lambertian)
-        return data.lambertian.pdf(dg,w_i,dbg);
+        return data.lambertian.pdf(interaction,w_i,dbg);
       if (type == TYPE_SimplePhase)
-        return data.simplePhase.pdf(dg,w_i,dbg);
+        return data.simplePhase.pdf(interaction,w_i,dbg);
       if (type == TYPE_HGPhase)
-        return data.hgPhase.pdf(dg,w_i,dbg);
+        return data.hgPhase.pdf(interaction,w_i,dbg);
       if (type == TYPE_PhysicallyBased)
-        return data.physicallyBased.pdf(dg,w_i,dbg);
+        return data.physicallyBased.pdf(interaction,w_i,dbg);
       return 0.f;
     }
     
     inline __rtc_device
     void PackedBSDF::scatter(ScatterResult &scatter,
-                             const DG &dg,
+                             const ShadingInteraction &interaction,
                              Random &random,
                              bool dbg) const
     {
       scatter = {};
       if (type == TYPE_HGPhase)
-        return data.hgPhase.scatter(scatter,dg,random,dbg);
+        return data.hgPhase.scatter(scatter,interaction,random,dbg);
       if (type == TYPE_SimplePhase)
-        return data.simplePhase.scatter(scatter,dg,random,dbg);
+        return data.simplePhase.scatter(scatter,interaction,random,dbg);
       if (type == TYPE_NVisii)
-        return data.nvisii.scatter(scatter,dg,random,dbg);
+        return data.nvisii.scatter(scatter,interaction,random,dbg);
       if (type == TYPE_Glass)
-        return data.glass.scatter(scatter,dg,random,dbg);
+        return data.glass.scatter(scatter,interaction,random,dbg);
       if (type == TYPE_Lambertian)
-        return data.lambertian.scatter(scatter,dg,random,dbg);
+        return data.lambertian.scatter(scatter,interaction,random,dbg);
       if (type == TYPE_PhysicallyBased)
-        return data.physicallyBased.scatter(scatter,dg,random,dbg);
+        return data.physicallyBased.scatter(scatter,interaction,random,dbg);
     }
 
     inline __rtc_device

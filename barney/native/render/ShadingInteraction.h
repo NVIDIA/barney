@@ -32,18 +32,18 @@ namespace BARNEY_NS {
     using Random = BARNEY_NS::native::Random2;
     
     // World-space hit data; wo and sampled wi point away from the hit.
-    // Ng controls sidedness and offsets, not the shading-lobe projection.
+    // geometricNormal controls sidedness and offsets, not the shading-lobe projection.
     // See doc/Scattering.md for the evaluation and sampling contract.
-    struct DG {
-      vec3f Ng; // Geometric normal oriented toward wo.
-      vec3f Ns; // Unoriented interpolated normal, before material normal maps.
+    struct ShadingInteraction {
+      vec3f geometricNormal; // Geometric normal oriented toward wo.
+      vec3f shadingNormal; // Unoriented interpolated normal, before material normal maps.
       vec3f wo;
       vec3f P;
       bool  insideMedium;
 
       // Flip the entire original shading frame, not each mapped lobe toward wo.
       inline __rtc_device vec3f orientShadingNormal(vec3f normal) const
-      { return dot(Ng,Ns) < 0.f ? -normal : normal; }
+      { return dot(geometricNormal,shadingNormal) < 0.f ? -normal : normal; }
     };
 
     struct EvalRes {
@@ -90,12 +90,12 @@ namespace BARNEY_NS {
 
 
     inline __rtc_device
-    vec3f sampleCosineWeightedHemisphere(vec3f Ns, Random &random)
+    vec3f sampleCosineWeightedHemisphere(vec3f shadingNormal, Random &random)
     {
       while (1) {
         vec3f p = 2.f*vec3f(random(),random(),random()) - vec3f(1.f);
         if (dot(p,p) > 1.f) continue;
-        return normalize(normalize(p)+Ns);
+        return normalize(normalize(p)+shadingNormal);
       }
     }
 
