@@ -24,7 +24,7 @@ namespace BARNEY_NS {
       m_ambientRadiance = getParam<float>("ambientRadiance", 1.f);
       m_crosshairs = getParam<bool>("crosshairs", false);
       m_denoise = getParam<bool>("denoise", false);
-      m_fadeOutDenoiser = getParam<bool>("fadeOutDenoiser", true);
+      m_fadeOutDenoiser = getParam<bool>("fadeOutDenoiser", false);
       m_upscale = getParam<bool>("upscale", false);
       m_background = getParam<math::float4>("background", math::float4(0, 0, 0, 1));
       m_backgroundImage = getParamObject<Array2D>("background");
