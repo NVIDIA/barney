@@ -21,9 +21,23 @@ from the hit toward the light or next vertex. BSDF directions are unit vectors.
 - `orientShadingNormal()` applies one shared sign, determined by `dot(geometricNormal,shadingNormal)`,
   to the original or mapped normal. Mapped lobes are not independently flipped
   toward `wo`. A lobe facing away may therefore have no support.
-- Each lobe's shading normal determines its projection cosine. Clearcoat can
+- PBR applies `adjustNormalForView()` after unpacking and the shared flip,
+  independently for base and clearcoat. When a normal's mirror direction fails
+  to clear the geometric surface, it is raised toward the geometric normal
+  using VisRTX's view-dependent policy. Evaluation, PDF, lobe selection, and
+  sampling resolve the same effective normals; stored mapped normals and the
+  interaction are not modified. Other BSDFs retain their existing normal policy.
+- Each lobe's effective shading normal determines its projection cosine. Clearcoat can
   have support and projection independent of the base lobe. Geometric normals
   still restrict which side a scattering event may reach.
+
+PBR normal flow is geometry-provided shading normal -> material-mapped normal
+-> shared orientation flip -> view-adjusted BSDF normal. The adjustment does
+not change geometric sidedness, ray offsets, or medium classification, and does
+not guarantee that every rough sample clears the surface: geometric rejection
+checks still apply. It is a rendering policy, not a claim of full VisRTX parity.
+The framebuffer normal remains the geometry-provided, pre-material normal;
+exposing mapped or adjusted normals as AOVs is separate work.
 
 Triangle hits carry geometric and interpolated normals independently. Analytic
 primitives use the shading normal as the geometric fallback when no separate

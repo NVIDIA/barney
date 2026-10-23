@@ -31,7 +31,7 @@ For a differently named build directory, substitute its path. Each enabled
 backend gets its own executable/test. `ctest -V` shows numerical results and
 elapsed time; executables can also be run directly. Device 0 is used. CUDA
 builds print the actual GPU name and retain default FMA contraction. The suite
-usually takes about 8–20 seconds on the tested CPU/RTX 5880 Ada setup, with
+runtime depends on the backend and quadrature refinement, with
 roughly half a GiB peak working storage for the finest quadrature. CTest has a
 180-second timeout. HIP, HIPRT, MPI and multiple physical GPUs are unverified.
 
@@ -74,6 +74,16 @@ roughly half a GiB peak working storage for the finest quadrature. CTest has a
   uses the actual half-packed normal. Index-matched straight transmission is
   checked separately against analytic discrete energy `.5`, with zero
   solid-angle PDF, never infinity or continuous-quadrature normalization.
+* **View-adjusted normals:** nine compute cases check unchanged valid normals,
+  analytic/reference rotations, geometric mirror clearance, grazing views, and
+  degenerate rotation planes. PBR base, independent clearcoat, back-face,
+  rough-transmission, grazing, and already-valid tilted frames run through the
+  full quadrature/sampling checks above. Normal resolution must preserve valid
+  normals and adjust invalid ones after the shared orientation flip. When base
+  and coat differ, the raw/projected check independently reconstructs the coat
+  term in double precision and applies each lobe's cosine, not one shared cosine.
+  These tests supply mapped normals directly; they do not test texture decoding
+  or normal-map construction. Geometric rejection still counts as a null sample.
 * **Captured GPU regression:** exact captured V/L/N bit patterns are fed to
   the actual half-packed PBR material (inside, IOR 1.5, roughness 0, white,
   transmission/specular 1). Projected value/PDF must be `eta^2=2.25` within

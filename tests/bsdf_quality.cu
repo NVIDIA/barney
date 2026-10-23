@@ -29,6 +29,7 @@ struct Parameters
   ShadingInteraction dg{};
   vec3f color = vec3f(.125f,.5f,.875f);
   vec3f normal = vec3f(0,0,1);
+  vec3f coatNormal = vec3f(0.f); // Zero keeps the base normal.
   float roughness = .5f, metallic = 0.f, specular = 0.f;
   float coat = 0.f, transmission = 0.f, ior = 1.5f;
 };
@@ -81,7 +82,9 @@ inline __rtc_device void setup(packedBSDF::PhysicallyBased &b, Parameters p)
 {
   b.setDefaults();
   b.baseColor = p.color;
-  b.normal = b.clearcoatNormal = p.normal;
+  b.normal = p.normal;
+  b.clearcoatNormal = dot(p.coatNormal,p.coatNormal) > 0.f
+      ? p.coatNormal : p.normal;
   b.roughness = p.roughness;
   b.metallic = p.metallic;
   b.specular = p.specular;
@@ -162,10 +165,89 @@ __rtc_global void sample(const rtc::ComputeInterface &ci, Parameters p,
 #endif
 #undef DISPATCH
 
+struct NormalInput
+{
+  vec3f geometric, view, shading;
+};
+
+__rtc_global void adjustNormals(const rtc::ComputeInterface &ci,
+                               const NormalInput *in, vec3f *out, int n)
+#if !RTC_DEVICE_CODE
+;
+#else
+{
+  const int i = ci.launchIndex().x;
+  if (i < n)
+    out[i] = adjustNormalForView(in[i].geometric, in[i].view, in[i].shading);
+}
+#endif
+
+__rtc_global void resolvedNormals(const rtc::ComputeInterface &ci,
+                                 Parameters p, vec3f *out)
+#if !RTC_DEVICE_CODE
+;
+#else
+{
+  if (ci.launchIndex().x != 0) return;
+  packedBSDF::PhysicallyBased b;
+  setup(b,p);
+  const auto normals = b.resolveShadingNormals(p.dg,b.unpack());
+  out[0] = normals.base;
+  out[1] = normals.clearcoat;
+}
+#endif
+
+void checkNormalAdjustment(rtc::Device *device)
+{
+  const vec3f ng(0,0,1);
+  const std::vector<NormalInput> inputs = {
+    {ng,ng,ng},
+    {ng,ng,vec3f(.6f,0,.8f)},
+    {ng,ng,vec3f(.8f,0,.6f)},
+    {ng,ng,vec3f(-.8f,0,.6f)},
+    {ng,normalize(vec3f(1,0,.001f)),ng},
+    {ng,ng,-ng},
+    {ng,ng,normalize(vec3f(1e-8f,0,-1))},
+    {ng,vec3f(.6f,0,.8f),vec3f(-.8f,0,.6f)},
+    {ng,normalize(vec3f(1,0,.001f)),vec3f(-.8f,0,.6f)}
+  };
+  // For V=Ng, 2*Nz^2-1=.01 gives Nz=sqrt(.505), Nx=sqrt(.495).
+  const std::vector<vec3f> expected = {
+    ng,inputs[1].shading,vec3f(.703562364f,0,.710633520f),
+    vec3f(-.703562364f,0,.710633520f),ng,-ng,inputs[6].shading,
+    // VisRTX rotation formula evaluated in double for an oblique view.
+    vec3f(-.442735813f,0,.896652106f)
+  };
+  Buffer in(device,inputs.size()*sizeof(NormalInput),inputs.data());
+  Buffer out(device,inputs.size()*sizeof(vec3f));
+  __rtc_launch(device,adjustNormals,1,128,in.ptr<NormalInput>(),
+               out.ptr<vec3f>(),int(inputs.size()));
+  const auto normals = out.read<vec3f>(inputs.size());
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    require(std::isfinite(dot(normals[i],normals[i]))
+            && std::abs(dot(normals[i],normals[i])-1.f) < 2e-5f,
+            "view adjustment must return a finite unit normal");
+    if (i < expected.size())
+      for (int c = 0; c < 3; ++c)
+        require(close(normals[i][c],expected[i][c]),
+                "view adjustment disagrees with reference case "+std::to_string(i));
+    if (i == 2 || i == 3 || i >= 7) {
+      const vec3f view = inputs[i].view;
+      const vec3f mirror = 2.f*dot(normals[i],view)*normals[i]-view;
+      const float threshold = std::min(.9f*dot(ng,view),.01f);
+      require(dot(ng,mirror) >= threshold-2e-6f,
+              "adjusted mirror direction must clear geometric surface");
+    }
+  }
+  std::cout << "View normal adjustment: " << inputs.size() << " cases passed\n";
+}
+
 struct Evaluation
 {
   std::vector<EvalRes> projected, raw;
   std::vector<float> pdf;
+  vec3f baseNormal;
+  vec3f coatNormal;
 };
 Evaluation evaluate(rtc::Device *device, Parameters p, Buffer &directions, int n)
 {
@@ -178,25 +260,63 @@ Evaluation evaluate(rtc::Device *device, Parameters p, Buffer &directions, int n
                directions.ptr<vec3f>(),rawOut.ptr<EvalRes>(),n);
   __rtc_launch(device,density,(n+127)/128,128,p,
                directions.ptr<vec3f>(),pdfOut.ptr<float>(),n);
-  return {projectedOut.read<EvalRes>(n),rawOut.read<EvalRes>(n),pdfOut.read<float>(n)};
+  vec3f baseNormal = dot(p.dg.geometricNormal,p.dg.shadingNormal) < 0.f
+      ? -p.dg.shadingNormal : p.dg.shadingNormal;
+  vec3f coatNormal = baseNormal;
+  if (p.model == PBR) {
+    Buffer normals(device,2*sizeof(vec3f));
+    __rtc_launch(device,resolvedNormals,1,1,p,normals.ptr<vec3f>());
+    const auto resolved = normals.read<vec3f>(2);
+    baseNormal = resolved[0];
+    coatNormal = resolved[1];
+  }
+  return {projectedOut.read<EvalRes>(n),rawOut.read<EvalRes>(n),
+          pdfOut.read<float>(n),baseNormal,coatNormal};
 }
 
 void checkEvaluation(const Case &test, const std::vector<vec3f> &directions,
                      const Evaluation &e)
 {
-  const vec3f normal = test.p.model == PBR
-      ? normalize((vec3f)to_half(test.p.normal)) : test.p.dg.shadingNormal;
+  const vec3f normal = e.baseNormal;
   for (size_t i = 0; i < directions.size(); ++i) {
     nonnegative(e.pdf[i],test.name+": invalid density");
     require(close(e.pdf[i],e.projected[i].pdf)
             && close(e.pdf[i],e.raw[i].pdf),
             test.name+": standalone/evaluation density disagree");
+    // Raw base and coat lobes project independently. Reconstruct the coat
+    // term in double rather than asking production evaluation for a cosine.
+    double coatProjectionCorrection = 0.;
+    const vec3f wi = directions[i], view = test.p.dg.wo;
+    const vec3f nc = e.coatNormal;
+    const double nv = dot(nc,view), nl = dot(nc,wi);
+    if (test.p.model == PBR && test.p.coat > 0.f && normal != nc
+        && dot(test.p.dg.geometricNormal,wi)
+               * dot(test.p.dg.geometricNormal,view) > 0.f
+        && nv > 0. && nl > 0.) {
+      const vec3f h = normalize(view+wi);
+      const double nh = std::max(0.,double(dot(nc,h)));
+      const double vh = dot(view,h);
+      const double alpha2 = .0625; // Packed clearcoat roughness is .5.
+      const double q = std::min(nh*nh,1.);
+      const double denom = alpha2*q + (1.-q);
+      const double d = alpha2/(pi*denom*denom);
+      const auto lambda = [&](double cosine) {
+        const double safe = std::max(cosine*cosine,1e-12);
+        return .5*(-1.+std::sqrt(1.+alpha2*(1.-safe)/safe));
+      };
+      const double cv = std::max(nv,1e-6), cl = std::max(nl,1e-6);
+      const double g = 1./(1.+lambda(cv)+lambda(cl));
+      const double f = .04+.96*std::pow(1.-vh,5);
+      const double coatRaw = float(to_half(test.p.coat))*f*d*g/(4.*cv*cl);
+      coatProjectionCorrection = coatRaw*(nl-std::abs(dot(normal,wi)));
+    }
     for (int c = 0; c < 3; ++c) {
       nonnegative(e.projected[i].value[c],test.name+": invalid projected value");
       nonnegative(e.raw[i].value[c],test.name+": invalid raw value");
       require(close(e.projected[i].value[c],
-                    e.raw[i].value[c]*std::abs(dot(normal,directions[i]))),
-              test.name+": raw/projected cosine mismatch");
+                    e.raw[i].value[c]*std::abs(dot(normal,directions[i]))
+                        + coatProjectionCorrection),
+              test.name+": raw/projected per-lobe cosine mismatch");
       require(e.projected[i].value[c] == 0.f || e.pdf[i] > 0.f,
               test.name+": nonzero continuous value without proposal support");
     }
@@ -446,6 +566,62 @@ void capturedRegression(rtc::Device *device)
   runCase(device,test);
 }
 
+void tiltedNormals(rtc::Device *device)
+{
+  auto tilted = makeCase(PBR,.5f,"PBR view-adjusted base");
+  tilted.p.normal = vec3f(-.8f,0,.6f);
+  tilted.p.roughness = .7f;
+  tilted.p.specular = .5f;
+  auto coat = tilted;
+  coat.name = "PBR independent view-adjusted coat";
+  coat.p.normal = vec3f(0,0,1);
+  coat.p.coatNormal = tilted.p.normal;
+  coat.p.coat = .75f;
+  auto back = coat;
+  back.name = "PBR back-face view-adjusted coat";
+  back.p.dg.shadingNormal = vec3f(0,0,-1);
+  back.p.dg.insideMedium = true;
+  back.p.normal = -coat.p.normal;
+  back.p.coatNormal = -coat.p.coatNormal;
+  auto transmission = tilted;
+  transmission.name = "PBR view-adjusted rough transmission";
+  transmission.p.transmission = .75f;
+  auto grazing = tilted;
+  grazing.name = "PBR grazing view-adjusted base";
+  grazing.p.dg.wo = normalize(vec3f(1,0,.001f));
+  auto valid = tilted;
+  valid.name = "PBR already-valid tilted base";
+  valid.p.normal = normalize(vec3f(.2f,0,1.f));
+
+  for (const auto &test : {tilted,coat,back,transmission,grazing,valid}) {
+    Buffer normals(device,2*sizeof(vec3f));
+    __rtc_launch(device,resolvedNormals,1,1,test.p,normals.ptr<vec3f>());
+    const auto resolved = normals.read<vec3f>(2);
+    for (int lobe = 0; lobe < 2; ++lobe) {
+      vec3f original = lobe == 1 && dot(test.p.coatNormal,test.p.coatNormal) > 0.f
+          ? test.p.coatNormal : test.p.normal;
+      original = normalize((vec3f)to_half(original));
+      if (dot(test.p.dg.geometricNormal,test.p.dg.shadingNormal) < 0.f)
+        original = -original;
+      const vec3f view = test.p.dg.wo, ng = test.p.dg.geometricNormal;
+      const float threshold = std::min(.9f*dot(ng,view),.01f);
+      const vec3f mirror = 2.f*dot(original,view)*original-view;
+      if (dot(ng,mirror) >= threshold)
+        require(length(resolved[lobe]-original) < 2e-6f,
+                test.name+": already-valid normal changed");
+      else {
+        require(length(resolved[lobe]-original) > .01f,
+                test.name+": tilted normal was not adjusted");
+        const vec3f adjustedMirror =
+            2.f*dot(resolved[lobe],view)*resolved[lobe]-view;
+        require(dot(ng,adjustedMirror) >= threshold-2e-6f,
+                test.name+": resolved mirror fails geometric clearance");
+      }
+    }
+    runCase(device,test);
+  }
+}
+
 void deltaEvents(rtc::Device *device, Model model)
 {
   auto test = makeCase(model,1.f,model == PBR ? "PBR index matched" : "NVisii index matched");
@@ -491,7 +667,9 @@ int main()
     require(cudaGetDeviceProperties(&properties,0) == cudaSuccess,"CUDA device query failed");
     std::cout << "GPU: " << properties.name << '\n';
 #endif
+    checkNormalAdjustment(&device);
     capturedRegression(&device);
+    tiltedNormals(&device);
     for (float mu : {1.f,.25f})
       runCase(&device,makeCase(LAMBERT,mu,"Lambertian mu="+std::to_string(mu)));
     for (Model model : {PBR,NVISII}) {

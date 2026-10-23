@@ -5,6 +5,7 @@
 #pragma once
 
 #include "native/render/ShadingInteraction.h"
+#include "native/render/AdjustNormalForView.h"
 #include "native/render/HitAttributes.h"
 #include "native/common/half.h"
 #include <limits>
@@ -671,6 +672,25 @@ namespace BARNEY_NS {
           iridescenceThickness = 0.0f;
         }
 
+        struct ShadingNormals {
+          vec3f base;
+          vec3f clearcoat;
+        };
+
+        inline __rtc_device ShadingNormals resolveShadingNormals(
+            const ShadingInteraction &interaction,
+            const PhysicallyBasedShadingState &state) const
+        {
+          const vec3f base = interaction.orientShadingNormal(
+              rtc::load(state.normal));
+          const vec3f coat = interaction.orientShadingNormal(
+              rtc::load(state.clearcoatNormal));
+          return {
+            adjustNormalForView(interaction.geometricNormal, interaction.wo, base),
+            adjustNormalForView(interaction.geometricNormal, interaction.wo, coat)
+          };
+        }
+
         // Density in solid angle, excluding discrete index-matched transmission.
         inline __rtc_device float pdf(ShadingInteraction interaction, const vec3f &wi, bool dbg) const
         {
@@ -688,9 +708,10 @@ namespace BARNEY_NS {
         {
           const PhysicallyBasedShadingState st = unpack();
           const vec3f V = interaction.wo;
-          const vec3f N = interaction.orientShadingNormal(rtc::load(st.normal));
+          const ShadingNormals normals = resolveShadingNormals(interaction, st);
+          const vec3f N = normals.base;
           const float eta = interaction.insideMedium ? st.ior : (1.0f / st.ior);
-          const vec3f Nc = interaction.orientShadingNormal(rtc::load(st.clearcoatNormal));
+          const vec3f Nc = normals.clearcoat;
           const float side = dot(interaction.geometricNormal,wi)*dot(interaction.geometricNormal,V);
           if (side == 0.f) return EvalRes::zero();
           return physicallybased::pbrEvaluate(&st, eta, N, Nc, V, wi,
@@ -712,8 +733,9 @@ namespace BARNEY_NS {
           scatter = {};
           const PhysicallyBasedShadingState st = unpack();
           const vec3f V = interaction.wo;
-          const vec3f N = interaction.orientShadingNormal(rtc::load(st.normal));
-          const vec3f Nc = interaction.orientShadingNormal(rtc::load(st.clearcoatNormal));
+          const ShadingNormals normals = resolveShadingNormals(interaction, st);
+          const vec3f N = normals.base;
+          const vec3f Nc = normals.clearcoat;
           const float eta = interaction.insideMedium ? st.ior : (1.0f / st.ior);
 
           // Clearcoat lobe: pick with probability clearcoat*FcV(NcDotV). This
