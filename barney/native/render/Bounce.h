@@ -158,7 +158,8 @@ inline __rtc_device void bounce(const World::DD &world,
           volume ? V : (dot(orientedGeometricNormal, light.direction) > 0.f ? orientedGeometricNormal : -orientedGeometricNormal);
       makeShadowRay(shadowRay,
           shadowState,
-          incoming * e.value * light.radiance / probability,
+          directLightContribution(incoming, e, light.radiance,
+                                  probability, light.environment),
           interaction.P + epsilon * offset,
           light.direction,
           light.distance * (1.f - 2.f * epsilon));
@@ -167,11 +168,6 @@ inline __rtc_device void bounce(const World::DD &world,
       shadowRay._dbg = ray._dbg;
       shadowRay.crosshair = ray.crosshair;
       shadowState.pixelID = state.pixelID;
-      // Quad lights have no intersectable geometry; there is no competing
-      // BSDF estimator for them. Discrete directions never compete either.
-      shadowState.misWeight = light.environment
-          ? probability / (probability + e.pdf)
-          : 1.f;
     }
   }
   ray.tMax = -1.f;

@@ -5,6 +5,7 @@
 #include "native/packedBSDF/Lambertian.h"
 #include "native/packedBSDF/PhysicallyBased.h"
 #include "native/packedBSDF/NVisii.h"
+#include "native/render/Ray.h"
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -313,6 +314,84 @@ void checkNormalAdjustment(rtc::Device *device)
     }
   }
   std::cout << "View normal adjustment: " << inputs.size() << " cases passed\n";
+}
+
+struct LightingResult
+{
+  EvalRes bsdf;
+  vec3f queued, visible, continuation;
+  float misWeight, legacyHalf;
+};
+
+__rtc_global void directLighting(const rtc::ComputeInterface &ci, Parameters p,
+                                float radiance, float probability,
+                                bool environment, LightingResult *out)
+#if !RTC_DEVICE_CODE
+;
+#else
+{
+  if (ci.launchIndex().x != 0) return;
+  packedBSDF::PhysicallyBased b;
+  setup(b,p);
+  const EvalRes e = b.evalProjected(p.dg,vec3f(0,0,1),false);
+  Ray ray;
+  PathState state{};
+  makeShadowRay(ray,state,
+                directLightContribution(vec3f(1.f),e,vec3f(radiance),
+                                        probability,environment),
+                vec3f(0.f),vec3f(0,0,1),BARNEY_INF);
+  out->bsdf = e;
+  out->queued = state.throughput;
+  out->misWeight = state.misWeight;
+  out->visible = (vec3f)state.throughput * state.misWeight;
+  out->legacyHalf = float(to_half(e.value.x*radiance/probability));
+  state.throughput = vec3f(1e6f,2.f,.5f);
+  out->continuation = state.throughput;
+}
+#endif
+
+void checkDirectLighting(rtc::Device *device)
+{
+  Parameters p;
+  p.model = PBR;
+  p.color = vec3f(1.f);
+  p.metallic = 1.f;
+  p.dg.geometricNormal = p.dg.shadingNormal = p.dg.wo = vec3f(0,0,1);
+  Buffer output(device,sizeof(LightingResult));
+  int cases = 0, legacyOverflows = 0;
+  for (float roughness : {.03f,.05f,.1f})
+    for (float radiance : {1.f,10.f,1e6f})
+      for (float selection : {1.f,.25f})
+        for (bool environment : {false,true}) {
+          p.roughness = roughness;
+          // Non-environment cases cover both area and discrete light weights;
+          // their total sampling probability does not compete with the BSDF.
+          const float probability = environment
+              ? selection*float(1./(4.*pi)) : selection;
+          __rtc_launch(device,directLighting,1,1,p,radiance,probability,
+                       environment,output.ptr<LightingResult>());
+          const auto r = output.read<LightingResult>(1).front();
+          const double denominator = double(probability)
+              + (environment ? double(r.bsdf.pdf) : 0.);
+          const double reference = double(r.bsdf.value.x)*radiance/denominator;
+          require(r.misWeight == 1.f,"direct lighting must not apply MIS twice");
+          for (int c = 0; c < 3; ++c)
+            require(close(r.queued[c],reference) && close(r.visible[c],reference),
+                    "queued PBR direct lighting disagrees with double reference");
+          require(r.continuation == vec3f(1e6f,2.f,.5f),
+                  "continuation throughput loses HDR range");
+          // Independent white-metal, normal-incidence GGX peak reference.
+          const double packedRoughness = float(to_half(roughness));
+          const double alpha = std::max(packedRoughness*packedRoughness,1e-4);
+          const double peak = 1./(4.*pi*alpha*alpha);
+          require(close(r.bsdf.value.x,peak) && close(r.bsdf.pdf,peak),
+                  "unexpected PBR specular peak in lighting regression");
+          if (!std::isfinite(r.legacyHalf)) ++legacyOverflows;
+          ++cases;
+        }
+  require(legacyOverflows > 0,"lighting cases must exercise legacy half overflow");
+  std::cout << "PBR direct lighting: " << cases << " cases passed, "
+            << legacyOverflows << " legacy half overflows\n";
 }
 
 struct Evaluation
@@ -742,6 +821,7 @@ int main()
 #endif
     checkMediumTransitions(&device);
     checkNormalAdjustment(&device);
+    checkDirectLighting(&device);
     capturedRegression(&device);
     tiltedNormals(&device);
     for (float mu : {1.f,.25f})

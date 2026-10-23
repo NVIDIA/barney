@@ -15,7 +15,8 @@ namespace BARNEY_NS {
 #define NEW_RNG 1
 
     struct PathState {
-      vec3h    throughput;
+      // HDR lighting and path weights must not be limited to half range.
+      vec3f    throughput;
       int32_t  pixelID;
       float    misWeight;
       int      numDiffuseBounces;
@@ -165,6 +166,18 @@ namespace BARNEY_NS {
       setHit(P, vec3f(0.f), t, packedBSDF::SimplePhase(albedo));
     }
 
+    inline __rtc_device vec3f directLightContribution(vec3f incoming,
+                                                      const EvalRes &bsdf,
+                                                      vec3f radiance,
+                                                      float lightProbability,
+                                                      bool environment)
+    {
+      // Only environment lights have a competing BSDF estimator. Fold the
+      // balance weight into the denominator before forming an HDR contribution.
+      const float denominator = lightProbability + (environment ? bsdf.pdf : 0.f);
+      return incoming * (bsdf.value / denominator) * radiance;
+    }
+
     inline __rtc_device
     void makeShadowRay(Ray &ray,
                        PathState &state,
@@ -181,6 +194,7 @@ namespace BARNEY_NS {
       ray.org = _org;
       ray.tMax = len;
       state.throughput = _tp;
+      state.misWeight = 1.f;
     }
 
     inline __rtc_device void Ray::packNormal(vec3f N)
