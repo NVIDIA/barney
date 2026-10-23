@@ -57,6 +57,7 @@ namespace BARNEY_NS {
         rtc::Buffer *rtcBuffer   = 0;
       };
       size_t numBytes = 0;
+      uint64_t revision = 0;
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
     };

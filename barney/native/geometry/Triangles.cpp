@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "native/geometry/Triangles.h"
+#include "native/geometry/TangentFrames.h"
+#include <climits>
 #include "native/ModelSlot.h"
 #include "native/Context.h"
 
@@ -12,11 +14,27 @@ namespace BARNEY_NS {
     RTC_IMPORT_TRIANGLES_GEOM(Triangles,Triangles,Triangles::DD,true,false);
 
     Triangles::Triangles(Context *context, DevGroup::SP devices)
-      : Geometry(context,devices)
+      : Geometry(context,devices), tangentBuffers(devices->numLogical,nullptr)
     {}
   
     Triangles::~Triangles()
-    {}
+    {
+      for (auto device : *devices)
+        if (auto buffer = tangentBuffers[device->contextRank()])
+          device->rtc->freeBuffer(buffer);
+    }
+
+    void Triangles::writeDD(Triangles::DD &dd, Device *device)
+    {
+      Geometry::writeDD(dd,device);
+      dd.vertices = (const vec3f *)vertices->getDD(device);
+      dd.indices = (const vec3i *)indices->getDD(device);
+      if (auto buffer = tangentBuffers[device->contextRank()]) {
+        auto &tangent = dd.attributes.tangentAttribute;
+        tangent.scope = GeometryAttribute::FACE_VARYING;
+        tangent.fromArray = {buffer->getDD(),BN_FLOAT4,int(3*indices->count)};
+      }
+    }
   
     /*! handle data arrays for vertices and indices; note that
       'general' geometry attributes of the ANARI material system
@@ -41,6 +59,16 @@ namespace BARNEY_NS {
   
     void Triangles::commit() 
     {
+      if (vertices->count > INT_MAX || indices->count > (INT_MAX-1)/3)
+        throw std::runtime_error("triangle mesh exceeds tangent index range");
+      const std::array<PODData::SP,8> inputs = {vertices,indices,
+        attributes.normalAttribute.perVertex,attributes.normalAttribute.faceVarying,
+        attributes.attribute[0].perVertex,attributes.attribute[0].faceVarying,
+        attributes.tangentAttribute.perVertex,attributes.tangentAttribute.faceVarying};
+      std::array<uint64_t,8> revisions;
+      for (size_t i = 0; i < inputs.size(); ++i)
+        revisions[i] = inputs[i] ? inputs[i]->revision : 0;
+      const bool regenerate = inputs != tangentInputs || revisions != tangentRevisions;
       for (auto device : *devices) {
         PLD *pld = getPLD(device);
         if (pld->triangleGeoms.empty()) {
@@ -62,13 +90,26 @@ namespace BARNEY_NS {
         geom->setVertices(verticesBuffer,numVertices);
         geom->setIndices(indicesBuffer,numIndices);
         Triangles::DD dd;
-        Geometry::writeDD(dd,device);
-        dd.vertices  = (vec3f*)vertices->getDD(device);
-        dd.indices   = (vec3i*)indices->getDD(device);
+        if (regenerate) {
+          auto &buffer = tangentBuffers[device->contextRank()];
+          if (buffer) device->rtc->freeBuffer(buffer);
+          buffer = nullptr;
+          if (!attributes.tangentAttribute.perVertex
+              && !attributes.tangentAttribute.faceVarying) {
+            const auto attrs = attributes.getDD(device);
+            TangentMesh mesh{(const vec3f *)vertices->getDD(device),
+              (const vec3i *)indices->getDD(device),numVertices,numIndices,
+              attrs.normalAttribute,attrs.attribute[0]};
+            buffer = generateTangentFrames(device->rtc,mesh);
+          }
+        }
+        writeDD(dd,device);
 
         // done:
         geom->setDD(&dd);
       }
+      tangentInputs = inputs;
+      tangentRevisions = revisions;
     }
     
   }

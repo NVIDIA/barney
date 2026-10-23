@@ -57,23 +57,8 @@ namespace BARNEY_NS {
                                           bool dbg) const
     {
       vec4f baseColor = this->color.eval(hitData,samplers,dbg);
-# if 1
-      float reflectance = .85f;
       packedBSDF::Lambertian bsdf;
-      (vec3f&)bsdf.albedo = reflectance * (const vec3f&)baseColor
-        * (ONE_OVER_PI)
-        ;
-# else
-      packedBSDF::NVisii bsdf;
-      bsdf.setDefaults();
-
-      bsdf.baseColor = (const vec3f&)baseColor;
-
-      bsdf.specular = 0.f;
-      bsdf.metallic = 0.0f;
-      bsdf.roughness = 1.f;
-      bsdf.ior = 1.f;
-# endif
+      (vec3f&)bsdf.albedo = (const vec3f&)baseColor;
       return bsdf;
     }
 

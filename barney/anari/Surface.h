@@ -37,6 +37,8 @@ namespace BARNEY_NS {
       helium::ChangeObserverPtr<Geometry> m_geometry;
       helium::ChangeObserverPtr<Material> m_material;
 
+      const Geometry *m_boundMesh{nullptr};
+      helium::TimeStamp m_meshFinalized{0};
       BNGeom m_bnGeom{nullptr};
       BNMaterial m_bnMat{nullptr};
     };

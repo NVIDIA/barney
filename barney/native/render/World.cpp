@@ -37,6 +37,7 @@ namespace BARNEY_NS {
         if (pld->dirLights)    rtc->freeMem(pld->dirLights);
         if (pld->pointLights)  rtc->freeMem(pld->pointLights);
         if (pld->motionDeltas) rtc->freeMem(pld->motionDeltas);
+        if (pld->instanceOrientations) rtc->freeMem(pld->instanceOrientations);
       }
     }
 
@@ -66,6 +67,7 @@ namespace BARNEY_NS {
         ? envMapLight.light->getDD(device,envMapLight.xfm)
         : EnvMapLight::DD{};
       dd.rank            = ldgContext->context->myRank();
+      dd.instanceOrientations = pld->instanceOrientations;
       dd.motionDeltas    = pld->motionDeltas;
       dd.numMotionDeltas = pld->numMotionDeltas;
       dd.samplers        = ldgContext->samplerRegistry->getDD(device);
@@ -125,6 +127,26 @@ namespace BARNEY_NS {
     {
       this->envMapLight.light = envMapLight;
       this->envMapLight.xfm = xfm;
+    }
+
+    void World::setInstanceOrientations(const std::vector<affine3f> &transforms)
+    {
+      // ModelSlot validates the effective transforms before publishing them.
+      std::vector<float> orientations;
+      orientations.reserve(transforms.size());
+      for (const auto &xfm : transforms)
+        orientations.push_back(xfm.l.det() < 0.f ? -1.f : 1.f);
+      for (auto device : *devices) {
+        SetActiveGPU forDuration(device);
+        auto pld = getPLD(device);
+        auto rtc = device->rtc;
+        if (pld->instanceOrientations) rtc->freeMem(pld->instanceOrientations);
+        pld->instanceOrientations = nullptr;
+        if (orientations.empty()) continue;
+        const size_t numBytes = orientations.size() * sizeof(float);
+        pld->instanceOrientations = (float *)rtc->allocMem(numBytes);
+        rtc->copy(pld->instanceOrientations, orientations.data(), numBytes);
+      }
     }
 
     void World::setMotionDeltas(const std::vector<affine3f> &deltas)

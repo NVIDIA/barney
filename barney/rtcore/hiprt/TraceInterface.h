@@ -227,7 +227,7 @@ namespace BARNEY_NS {
 
     inline __device__
     vec3f TraceInterface::transformNormalFromObjectToWorldSpace(vec3f v) const
-    { return xfmVector(currentInstance->objectToWorldXfm.l,(const owl::common::vec3f &)v); }
+    { return xfmVector(currentInstance->worldToObjectXfm.l.transposed(),(const owl::common::vec3f &)v); }
 
     inline __device__
     vec3f TraceInterface::transformPointFromObjectToWorldSpace(vec3f v) const
@@ -239,7 +239,7 @@ namespace BARNEY_NS {
 
     inline __device__
     vec3f TraceInterface::transformNormalFromWorldToObjectSpace(vec3f v) const
-    { return xfmVector(currentInstance->worldToObjectXfm.l,(const owl::common::vec3f &)v); }
+    { return xfmVector(currentInstance->objectToWorldXfm.l.transposed(),(const owl::common::vec3f &)v); }
 
     inline __device__
     vec3f TraceInterface::transformPointFromWorldToObjectSpace(vec3f v) const
