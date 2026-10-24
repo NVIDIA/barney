@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+using namespace BARNEY_NS;
 using namespace BARNEY_NS::native;
 using namespace owl::common;
 
@@ -37,6 +38,22 @@ int main()
     throw std::runtime_error("fixture must contain an inactive value");
   range = barney_nanovdb::scalarRange(*grid, grid->worldBBox());
   if (range.lower > -7.f) throw std::runtime_error("inactive value excluded");
+  // Independent worked values: one corner is 1, its x neighbor is -7,
+  // and the other six are 9. Quarter weights give 3.375 and 8.125.
+  const vec3f points[] = {vec3f(-18.5f,2.5f,-2.5f),
+    vec3f(-18.25f,2.5f,-2.5f), vec3f(-17.75f,2.5f,-2.5f),
+    vec3f(-18.25f,2.75f,-2.25f), vec3f(-17.75f,3.25f,-1.75f),
+    vec3f(-20.f,1.f,-4.f), vec3f(-18.25f,3.25f,-2.25f),
+    vec3f(-18.25f,2.75f,-1.75f), vec3f(-17.75f,2.75f,-2.25f)};
+  const float linear[] = {1.f, -1.f, -5.f, 3.375f, 8.125f, 1.f, 7.125f, 7.125f, 1.125f};
+  const float nearest[] = {1.f, 1.f, -7.f, 1.f, 9.f, 1.f, 9.f, 9.f, -7.f};
+  for (auto filter : {BN_TEXTURE_LINEAR, BN_TEXTURE_NEAREST}) {
+    sampler.filterMode = filter;
+    for (int i = 0; i < 9; ++i)
+      if (sampler.sample(points[i]) != (filter == BN_TEXTURE_LINEAR ? linear[i] : nearest[i]))
+        throw std::runtime_error("known Float nearest/linear reconstruction");
+  }
+  std::puts("PASS: numerical nearest/linear oracle, inactive neighbors and clamp");
 
   const double matrices[][9] = {
     {1,0,0, 0,1,0, 0,0,1},
@@ -80,9 +97,12 @@ int main()
             const vec3f p(float(lo[0]+(hi[0]-lo[0])*x/8),
                           float(lo[1]+(hi[1]-lo[1])*y/8),
                           float(lo[2]+(hi[2]-lo[2])*z/8));
-            const float value = sampler.sample(p);
-            if (value < local.lower || value > local.upper)
-              throw std::runtime_error("affine local range underbounds production sample");
+            for (auto filter : {BN_TEXTURE_LINEAR, BN_TEXTURE_NEAREST}) {
+              sampler.filterMode = filter;
+              const float value = sampler.sample(p);
+              if (value < local.lower || value > local.upper)
+                throw std::runtime_error("affine local range underbounds production sample");
+            }
           }
     }
   }
@@ -102,12 +122,34 @@ int main()
   if (firstCell.lower > 1.f || firstCell.upper < 13.f || firstCell.upper >= 14.f)
     throw std::runtime_error("local range must include interpolation halo without global extrema");
   std::puts("PASS: dense ramp local tightness and partial-block halo");
+  // Match the API filter-update fixture: a first-cell nearest-only range
+  // would be [0,0], but linear can reach the neighboring impulse at z=12.
+  nanovdb::tools::build::Grid<float> impulseSource(0.f);
+  auto impulseAccessor = impulseSource.getAccessor();
+  for (int z = 0; z < 35; ++z)
+    impulseAccessor.setValue(nanovdb::Coord(0,0,z), z == 12 ? 1.f : 0.f);
+  auto impulse = nanovdb::tools::createNanoGrid(impulseSource);
+  sampler.nvdbGrid = impulse.grid<float>();
+  sampler.indexBounds = box3i(vec3i(0), vec3i(0,0,34));
+  const auto halo = barney_nanovdb::scalarRange(*sampler.nvdbGrid,
+      nanovdb::Vec3dBBox(nanovdb::Vec3d(0), nanovdb::Vec3d(1,1,35.0/3)));
+  sampler.filterMode = BN_TEXTURE_NEAREST;
+  if (sampler.sample(vec3f(0.5f,0.5f,11.625f)) != 0.f)
+    throw std::runtime_error("nearest must not reach the adjacent-cell impulse");
+  sampler.filterMode = BN_TEXTURE_LINEAR;
+  if (sampler.sample(vec3f(0.5f,0.5f,11.625f)) != 0.125f
+      || halo.lower > 0.f || halo.upper < 1.f)
+    throw std::runtime_error("shared range must cover the wider linear footprint");
+  std::puts("PASS: nearest-to-linear impulse footprint remains conservative");
   nanovdb::tools::build::Grid<float> farSource(9.f);
   farSource.getAccessor().setValue(nanovdb::Coord(16777217, 0, 0), 1.f);
   auto far = nanovdb::tools::createNanoGrid(farSource);
   sampler.nvdbGrid = far.grid<float>();
   sampler.indexBounds = box3i(vec3i(16777217,0,0), vec3i(16777217,0,0));
-  if (sampler.sample(vec3f(16777218.f,0.5f,0.5f)) != 1.f)
-    throw std::runtime_error("float-rounded index bound must not sample outside the grid");
+  for (auto filter : {BN_TEXTURE_LINEAR, BN_TEXTURE_NEAREST}) {
+    sampler.filterMode = filter;
+    if (sampler.sample(vec3f(16777218.f,0.5f,0.5f)) != 1.f)
+      throw std::runtime_error("float-rounded index bound must not sample outside the grid");
+  }
   std::puts("PASS: small grid at an origin beyond exact float integers");
 }

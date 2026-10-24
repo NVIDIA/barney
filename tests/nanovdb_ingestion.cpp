@@ -278,9 +278,88 @@ static double difference(const std::vector<float> &a, const std::vector<float> &
   return error / a.size();
 }
 
+static void checkFilterUpdates()
+{
+  // The first macrocell ends at z=35/3: nearest reaches index 11, but
+  // linear also needs the impulse at 12. Each TF is opaque only between 0/1.
+  nanovdb::tools::build::Grid<float> source(0.f);
+  auto accessor = source.getAccessor();
+  for (int z = 0; z < 35; ++z)
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        accessor.setValue(nanovdb::Coord(x,y,z), z == 12 ? 1.f : 0.f);
+  auto handle = nanovdb::tools::createNanoGrid(source);
+  RenderScene nearest, linear, omitted;
+  for (auto *s : {&nearest, &linear, &omitted}) {
+    const float eye[3] = {0.f, 2.f, 50.f};
+    anariSetParameter(s->device, s->camera, "position", ANARI_FLOAT32_VEC3, eye);
+    anariCommitParameters(s->device, s->camera);
+    for (int i = 0; i < 2; ++i) {
+      auto opacity = anariNewArray1D(s->device, nullptr, nullptr, nullptr, ANARI_FLOAT32, 3);
+      auto values = static_cast<float *>(anariMapArray(s->device, opacity));
+      values[0] = values[2] = 0.f;
+      values[1] = i == 0 ? 0.8f : 0.3f;
+      anariUnmapArray(s->device, opacity);
+      anariSetParameter(s->device, s->volumeHandles[i], "opacity", ANARI_ARRAY1D, &opacity);
+      anariCommitParameters(s->device, s->volumeHandles[i]);
+      anariRelease(s->device, opacity);
+    }
+  }
+  anariSetParameter(nearest.device, nearest.field, "filter", ANARI_STRING, "nearest");
+  anariSetParameter(linear.device, linear.field, "filter", ANARI_STRING, "linear");
+  nearest.data(handle.data(), handle.size(), true, "nearest shared Float field");
+  linear.data(handle.data(), handle.size(), true, "linear shared Float field");
+  omitted.data(handle.data(), handle.size(), true, "default shared Float field");
+  if (difference(omitted.render(), linear.render()) > 0.005)
+    throw std::runtime_error("omitted filter differs from explicit linear");
+  const double delta = difference(nearest.render(), linear.render());
+  std::printf("nearest/linear shared-field delta=%g\n", delta);
+  if (delta <= 0.01) throw std::runtime_error("nearest must not blend opaque TF interiors");
+  std::puts("PASS: nearest and linear select different production reconstruction");
+
+  // Save fresh equivalents for both volumes together and each independently.
+  // The latter prevents one missing/stale shared-field binding hiding in a sum.
+  std::vector<float> freshLinear[3], freshNearest[3];
+  for (int view = 0; view < 3; ++view) {
+    nearest.visible(view != 2, view != 1);
+    linear.visible(view != 2, view != 1);
+    freshNearest[view] = nearest.render();
+    freshLinear[view] = linear.render();
+    if (difference(freshNearest[view], freshLinear[view]) <= 0.01)
+      throw std::runtime_error("each shared volume must be interpolation-sensitive");
+  }
+  // All updates below retain the same data parameter/array. No world or volume
+  // recommit occurs between the field-only commit and the first (joint) render.
+  for (const char *filter : {"linear", "cubic", "", "Nearest", "NEAREST",
+                             "Linear", "nearestNeighbor", "point", "unknown",
+                             static_cast<const char *>(nullptr)}) {
+    nearest.visible(1, 1);
+    anariSetParameter(nearest.device, nearest.field, "filter", ANARI_STRING, "nearest");
+    anariCommitParameters(nearest.device, nearest.field);
+    if (difference(nearest.render(), freshNearest[0]) > 0.005)
+      throw std::runtime_error("filter-only return to nearest differs from fresh scene");
+    if (filter)
+      anariSetParameter(nearest.device, nearest.field, "filter", ANARI_STRING, filter);
+    else
+      anariUnsetParameter(nearest.device, nearest.field, "filter");
+    anariCommitParameters(nearest.device, nearest.field);
+    for (int view = 0; view < 3; ++view) {
+      if (view) nearest.visible(view != 2, view != 1);
+      const double updateDelta = difference(nearest.render(), freshLinear[view]);
+      std::printf("filter=%s view=%d fresh delta=%g\n",
+                  filter ? filter : "<unset>", view, updateDelta);
+      if (updateDelta > 0.005)
+        throw std::runtime_error("shared-field filter update differs from fresh linear scene");
+    }
+    std::printf("PASS: shared-field nearest to %s, joint and individual volumes\n",
+                filter ? filter : "<unset>");
+  }
+}
+
 int main()
 {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
+  checkFilterUpdates();
   Scene scene;
   scene.check(false, "missing data");
   const unsigned char shortPayload[1] = {0};

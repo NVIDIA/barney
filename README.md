@@ -71,6 +71,19 @@ typical scalar field/volume data types such as structured volumes as
 well as Block-Structured AMR and unstructured data (as far as these
 are currently supported by ANARI).
 
+### NanoVDB Volume Filtering
+
+The ANARI `nanovdb` spatial field supports Float grids with `filter` set to
+exactly `nearest` or `linear` (case-sensitive). Omitting or unsetting the
+parameter selects linear, as does any other string, including `cubic`, empty
+strings, aliases, and differently cased spellings. Filter-only commits apply
+to every volume sharing the field without replacing the application's data.
+
+Cubic reconstruction is deliberately **not supported**: its fallback to linear
+is a limitation of Barney's `KHR_SPATIAL_FIELD_NANOVDB` support, not full
+extension filtering conformance. See [NanoVDB regression coverage and
+limitations](tests/README.nanovdb.md) for verification details.
+
 ### Path Tracer
 
 Though clearly focussed on Sci-Vis, Barney is still a pretty capable

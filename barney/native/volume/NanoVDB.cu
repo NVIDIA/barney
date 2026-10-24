@@ -112,6 +112,7 @@ namespace BARNEY_NS {
       assert(sf->data);
       dd.nvdbGrid    = (NVDBGridT*)sf->data->getDD(device);
       dd.indexBounds = sf->indexBounds;
+      dd.filterMode = sf->filterMode;
 
       assert(dd.nvdbGrid);
       return dd;
@@ -162,6 +163,16 @@ namespace BARNEY_NS {
       if (member == "data") {
         data = value->as<PODData>();
         assert(data);
+        return true;
+      }
+      return false;
+    }
+
+    bool NanoVDBData::set1i(const std::string &member, const int &value)
+    {
+      if (member == "filterMode") {
+        filterMode = value == BN_TEXTURE_NEAREST
+          ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
         return true;
       }
       return false;

@@ -97,6 +97,50 @@ case fails the CPU macrocell range-buffer allocation, checks that both volumes
 vanish, and compares recovery to a fresh scene. GPU runs explicitly skip these
 CPU/system-allocation hooks; device allocator failure is not claimed tested.
 
+## Nearest and linear filtering
+
+The ANARI `filter` parameter matches exact, case-sensitive `nearest` and
+`linear`. Omitted/unset, empty, `cubic`, differently cased, alias and unknown
+strings select linear. **Cubic is deliberately unsupported**; this fallback
+is a declared extension limitation, not full filtering conformance. The
+adapter carries the effective mode into each production sampler. Both modes
+retain the existing world-to-index/half-voxel shift and boundary clamping;
+nearest selects the closer voxel (halfway ties select the upper index).
+
+Filter-only commits retain the application's data array and use the existing
+field-finalization/rebinding lifecycle. Both dependent volumes receive the new
+sampler and their own transfer-function majorants by the next render. Current
+finalization recreates the native field; ranges already conservatively cover
+both reconstruction footprints, so rebuilding them is not a correctness
+requirement or a test assertion.
+
+The API regression uses a 35-voxel extent with one impulse slab at index 12
+and two independent non-monotonic opacity maps: [0, 0.8, 0] and [0, 0.3, 0].
+The first macrocell ends at world z=35/3: its nearest footprint reaches index
+11, while linear also reaches the impulse at 12. Thus a nearest-only local
+range would need widening on the update. A numerical production-sampler/range
+check confirms the first-cell sample at z=11.625 changes from 0 to 0.125 and
+that the shared range already includes [0,1].
+Nearest samples transparent endpoints, while linear reaches opaque intermediate
+values. Thus simply comparing updated and fresh scenes cannot mask an ignored
+filter: their nearest/linear images must also differ by > 0.01, jointly and
+for each volume alone. Fresh omitted and explicit-linear fields must agree.
+After each return to nearest, commits change only the filter to `linear`,
+`cubic`, empty, `Nearest`, `NEAREST`, `Linear`, `nearestNeighbor`, `point`,
+`unknown`, or unset. Both volumes are rendered together immediately (without a
+world/volume recommit), then individually, against fresh linear equivalents.
+The existing 64 spp / 0.005 mean-RGBA tolerance and fresh-frame reset apply.
+CPU/OptiX nearest-versus-linear differences were 0.114831/0.113807; equivalent
+scene deltas were below 1e-9 on both backends. No rebuild counts are asserted.
+
+CPU and CUDA numerical tests check both production modes against hand-calculated
+samples: corners 1, -7, and six 9s yield linear quarter-weight values 3.375,
+8.125, 7.125 and 1.125, versus discrete nearest values 1, -7 or 9. Mixed-axis
+positions, negative origins, inactive values and clamping are included. Both
+modes are checked against the same conservative ranges at cell interiors,
+faces, edges and corners under affine maps. The CPU large-origin regression
+also runs both modes. These tests use no second sampler as an oracle.
+
 ## Sanitizers and known unrelated issues
 
 Instrument the existing build and the client (restore the flags afterwards):
@@ -225,9 +269,9 @@ rendering under Compute Sanitizer is **not verified**: both this change and
 unchanged integration 639c8aef fail with an internal sanitizer hardware-exception
 error followed by CUDA error 700 on the first populated render. Ticket 09 tracks
 that baseline/tooling limitation; no suppression or full device-safety claim is
-made. Normal OptiX integration tests pass. Multi-GPU, native CUDA RT, HIP and
-HIPRT were not exercised. Nearest dispatch/filter updates and quantized types
-remain later tickets.
+made. Normal OptiX integration tests pass, including nearest/linear dispatch
+and shared-field filter updates. Multi-GPU, native CUDA RT, HIP and HIPRT were
+not exercised. Quantized types remain a later ticket.
 
 The repository's `just build` must be invoked from the ticket workspace. The
 initial direct configure selected `lib64`, while the recipe removes a file in

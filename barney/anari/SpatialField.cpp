@@ -288,6 +288,8 @@ namespace BARNEY_NS {
       if (!bd)
         throw std::runtime_error("NanoVDB data allocation failed");
       bnSetData(sf, "data", bd.get());
+      bnSet1i(sf, "filterMode", m_filter == "nearest"
+          ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR);
       bnCommit(sf);
       m_empty = false;
       m_valid = true;

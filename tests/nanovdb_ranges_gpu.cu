@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+using namespace BARNEY_NS;
 using namespace BARNEY_NS::native;
 using namespace owl::common;
 
@@ -41,14 +42,31 @@ __global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
         || sampler.sample(vec3f(-17.5f,2.5f,-2.5f)) != -7.f
         || range.lower > -7.f || range.upper < 9.f)
       atomicAdd(failures, 1);
+    // Hand-calculated quarter weights for corners 1, -7 and six 9s.
+    const vec3f points[] = {vec3f(-18.5f,2.5f,-2.5f),
+      vec3f(-18.25f,2.5f,-2.5f), vec3f(-17.75f,2.5f,-2.5f),
+      vec3f(-18.25f,2.75f,-2.25f), vec3f(-17.75f,3.25f,-1.75f),
+      vec3f(-20.f,1.f,-4.f), vec3f(-18.25f,3.25f,-2.25f),
+      vec3f(-18.25f,2.75f,-1.75f), vec3f(-17.75f,2.75f,-2.25f)};
+    const float linear[] = {1.f, -1.f, -5.f, 3.375f, 8.125f, 1.f, 7.125f, 7.125f, 1.125f};
+    const float nearest[] = {1.f, 1.f, -7.f, 1.f, 9.f, 1.f, 9.f, 9.f, -7.f};
+    for (int mode = 0; mode < 2; ++mode) {
+      sampler.filterMode = mode ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
+      for (int i = 0; i < 9; ++i)
+        if (sampler.sample(points[i]) != (mode ? nearest[i] : linear[i]))
+          atomicAdd(failures, 1);
+    }
   }
   for (int z = 0; z <= 4; ++z)
     for (int y = 0; y <= 4; ++y)
       for (int x = 0; x <= 4; ++x) {
-        const float value = sampler.sample(vec3f(float(lo[0]+(hi[0]-lo[0])*x/4),
-            float(lo[1]+(hi[1]-lo[1])*y/4), float(lo[2]+(hi[2]-lo[2])*z/4)));
-        if (!isfinite(value) || value < range.lower || value > range.upper)
-          atomicAdd(failures, 1);
+        for (int mode = 0; mode < 2; ++mode) {
+          sampler.filterMode = mode ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
+          const float value = sampler.sample(vec3f(float(lo[0]+(hi[0]-lo[0])*x/4),
+              float(lo[1]+(hi[1]-lo[1])*y/4), float(lo[2]+(hi[2]-lo[2])*z/4)));
+          if (!isfinite(value) || value < range.lower || value > range.upper)
+            atomicAdd(failures, 1);
+        }
       }
 #endif
 }

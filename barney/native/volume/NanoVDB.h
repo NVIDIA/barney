@@ -50,6 +50,7 @@ namespace BARNEY_NS {
       // ------------------------------------------------------------------
       /*! @{ parameter set/commit interface */
       bool setData(const std::string &member, const Data::SP &value) override;
+      bool set1i(const std::string &member, const int &value) override;
       void commit() override;
       /*! @} */
       // ------------------------------------------------------------------
@@ -60,6 +61,7 @@ namespace BARNEY_NS {
       MCGrid::SP buildMCs() override;
 
       PODData::SP data;
+      BNTextureFilterMode filterMode { BN_TEXTURE_LINEAR };
       box3i indexBounds;
       vec3f voxelSize;
       vec3i gridSize;
@@ -82,6 +84,7 @@ namespace BARNEY_NS {
 #endif
         NVDBGridT *nvdbGrid;
         box3i indexBounds;
+        BNTextureFilterMode filterMode { BN_TEXTURE_LINEAR };
       };
 
       void build() override;
@@ -132,6 +135,10 @@ namespace BARNEY_NS {
       const int z1 = z0 < indexBounds.upper.z ? z0 + 1 : z0;
 
       auto acc = nvdbGrid->getAccessor();
+      if (filterMode == BN_TEXTURE_NEAREST)
+        return acc.getValue(nanovdb::Coord(fx < 0.5f ? x0 : x1,
+                                          fy < 0.5f ? y0 : y1,
+                                          fz < 0.5f ? z0 : z1));
       const float v000 = acc.getValue(nanovdb::Coord(x0, y0, z0));
       const float v100 = acc.getValue(nanovdb::Coord(x1, y0, z0));
       const float v010 = acc.getValue(nanovdb::Coord(x0, y1, z0));
