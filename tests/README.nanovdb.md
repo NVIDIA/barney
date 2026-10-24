@@ -1,5 +1,11 @@
 # NanoVDB Float regression tests
 
+Ticket 05's [Float acceptance evidence](nanovdb_float_evidence.md) records the
+current CPU/OptiX/native-CUDA backend matrix, analytical homogeneous transmission,
+reproducible sparse build/memory/render measurements, and explicit remaining
+integrator, sanitizer and hardware limits. The sections below describe the
+accumulated tests and earlier implementation evidence.
+
 Run from a Barney source workspace with a configured CPU build:
 
 ```sh
@@ -267,8 +273,9 @@ This is conservative but intentionally not topology-aware: construction work
 is proportional to the sum of inverse-mapped cell AABB volumes, not stored node
 count. Rotation/shear can increase overlap and loosen ranges. Huge sparse
 extents can be expensive; there is no file-size-proportional cap or work timeout.
-Large sparse-scene timing/memory benchmarks remain ticket 05, not an inferred
-speedup claim here.
+Large sparse-scene timing/memory measurements are now recorded in
+[nanovdb_float_evidence.md](nanovdb_float_evidence.md); they establish no speedup
+threshold or guarantee for arbitrary extents.
 
 Ranges are built during native field commit so construction/allocation failures
 reach the adapter's existing error/invalidation handler. The shared MC resize
@@ -322,8 +329,9 @@ unchanged integration 639c8aef fail with an internal sanitizer hardware-exceptio
 error followed by CUDA error 700 on the first populated render. Ticket 09 tracks
 that baseline/tooling limitation; no suppression or full device-safety claim is
 made. Normal OptiX integration tests pass, including nearest/linear dispatch
-and shared-field filter updates. Multi-GPU, native CUDA RT, HIP and HIPRT were
-not exercised. Quantized types remain a later ticket.
+and shared-field filter updates. Native CUDA RT was subsequently exercised in
+ticket 05; see the current evidence matrix linked above. Multi-GPU, HIP and HIPRT
+remain unverified. Quantized types remain a later ticket.
 
 The repository's `just build` must be invoked from the ticket workspace. The
 initial direct configure selected `lib64`, while the recipe removes a file in

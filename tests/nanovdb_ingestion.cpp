@@ -10,6 +10,8 @@
 #include <cerrno>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 
 #ifndef NANOVDB_TEST_NO_ALLOC_FAILURE
 // Linux/glibc system-allocation fault injection, not a renderer test hook.
@@ -482,8 +484,137 @@ static void checkFilterUpdates()
   }
 }
 
+static void checkHomogeneousTransmittance()
+{
+  nanovdb::tools::build::Grid<float> source(0.f);
+  auto accessor = source.getAccessor();
+  for (int z = 0; z < 8; ++z)
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        accessor.setValue(nanovdb::Coord(x,y,z), .5f);
+  auto handle = nanovdb::tools::createNanoGrid(source);
+  RenderScene s;
+  s.visible(1, 0);
+  anariUnsetParameter(s.device, s.world, "surface");
+  anariCommitParameters(s.device, s.world);
+  const float eye[3] = {2.f, 2.f, 15.f};
+  const float height = 2.f;
+  anariSetParameter(s.device, s.camera, "position", ANARI_FLOAT32_VEC3, eye);
+  anariSetParameter(s.device, s.camera, "height", ANARI_FLOAT32, &height);
+  anariCommitParameters(s.device, s.camera);
+  const int samples = 1024;
+  const float ambient = 0.f;
+  anariSetParameter(s.device, s.renderer, "ambientRadiance", ANARI_FLOAT32, &ambient);
+  anariSetParameter(s.device, s.renderer, "pixelSamples", ANARI_INT32, &samples);
+  anariCommitParameters(s.device, s.renderer);
+  s.data(handle.data(), handle.size(), true, "homogeneous eight-unit slab");
+  for (const char *filter : {"nearest", "linear"}) {
+    anariSetParameter(s.device, s.field, "filter", ANARI_STRING, filter);
+    anariCommitParameters(s.device, s.field);
+    for (float density : {0.f, .1f, .25f, .5f}) {
+      const float values[5] = {density, density, density, density, density};
+      auto opacity = setOpacity(s, 0, values);
+      anariRelease(s.device, opacity);
+      const float unitDistance = 2.f;
+      anariSetParameter(s.device, s.volume, "unitDistance", ANARI_FLOAT32, &unitDistance);
+      anariCommitParameters(s.device, s.volume);
+      const auto image = s.render();
+      // Orthographic rays lie strictly inside the slab's x/y footprint.
+      // Pure absorption against white: Beer-Lambert T=exp(-sigma*length).
+      const double expected = std::exp(-double(density)*8.0/unitDistance);
+      double mean = 0;
+      for (size_t i = 0; i < image.size(); i += 4) mean += image[i];
+      mean /= image.size()/4;
+      const double tolerance = 6*std::sqrt(expected*(1-expected)/(48*32*1024)) + .001;
+      std::fprintf(stderr, "TRANSMITTANCE filter=%s density=%g expected=%.9f measured=%.9f tolerance=%.9f\n",
+          filter, density, expected, mean, tolerance);
+      // The shared three-term fastLog biases optical depth 2 (ticket 10).
+      // Keep that measurement visible, but do not claim it as acceptance.
+      if (density <= .25f && std::abs(mean-expected) > tolerance)
+        throw std::runtime_error("homogeneous transmittance differs from Beer-Lambert law");
+      if (density > .25f)
+        std::fprintf(stderr, "LIMIT: optical depth 2 is diagnostic only (fastLog bias, ticket 10)\n");
+    }
+  }
+  std::printf("PASS: analytical homogeneous transmittance through optical depth 1, both filters\n");
+}
+
+static void benchmarkSparse(int extent)
+{
+  if (extent < 16 || extent > 2048)
+    throw std::runtime_error("benchmark fixture extent must be 16..2048 (not a field limit)");
+  nanovdb::tools::build::Grid<float> source(0.f);
+  auto accessor = source.getAccessor();
+  for (int z = 0; z < 8; ++z)
+    for (int y = 0; y < 8; ++y)
+      for (int x = 0; x < 8; ++x) {
+        accessor.setValue(nanovdb::Coord(x,y,z), .5f);
+        accessor.setValue(nanovdb::Coord(extent-8+x,extent-8+y,extent-8+z), 1.f);
+      }
+  auto handle = nanovdb::tools::createNanoGrid(source, nanovdb::tools::StatsMode::BBox);
+  const bool shear = std::getenv("NANOVDB_BENCHMARK_SHEAR") != nullptr;
+  if (shear) {
+    auto *grid = handle.grid<float>();
+    grid->mMap.mMatF[1] = float(grid->mMap.mMatD[1] = .5);
+    grid->mMap.mInvMatF[1] = float(grid->mMap.mInvMatD[1] = -.5);
+    grid->mVoxelSize = grid->mMap.getVoxelSize();
+    nanovdb::Vec3dBBox world;
+    for (int i = 0; i < 8; ++i)
+      world.expand(grid->indexToWorld(nanovdb::Vec3d(i&1 ? extent : 0,
+          i&2 ? extent : 0, i&4 ? extent : 0)));
+    grid->mWorldBBox = world;
+  }
+  RenderScene s;
+  s.visible(1, 0);
+  anariUnsetParameter(s.device, s.world, "surface");
+  anariCommitParameters(s.device, s.world);
+  const float eye[3] = {shear ? 6.f : 4.f, 4.f, float(extent+15)};
+  const float height = 12.f, ambient = 0.f;
+  anariSetParameter(s.device, s.camera, "position", ANARI_FLOAT32_VEC3, eye);
+  anariSetParameter(s.device, s.camera, "height", ANARI_FLOAT32, &height);
+  anariCommitParameters(s.device, s.camera);
+  anariSetParameter(s.device, s.renderer, "ambientRadiance", ANARI_FLOAT32, &ambient);
+  anariCommitParameters(s.device, s.renderer);
+  using Clock = std::chrono::steady_clock;
+  std::vector<double> builds, renders;
+  const size_t dim = (extent+15)/16;
+  std::printf("SPARSE extent=%d shear=%d active=1024 payload_bytes=%zu cells=%zu range_bytes=%zu one_volume_majorant_bytes=%zu\n",
+      extent, shear, size_t(handle.size()), dim*dim*dim, 8*dim*dim*dim, 4*dim*dim*dim);
+  for (int trial = 0; trial < 6; ++trial) {
+    // A new managed array forces the normal field update/build path each trial.
+    auto bytes = anariNewArray1D(s.device, nullptr, nullptr, nullptr, ANARI_UINT8, handle.size());
+    std::memcpy(anariMapArray(s.device, bytes), handle.data(), handle.size());
+    anariUnmapArray(s.device, bytes);
+    const auto start = Clock::now();
+    anariSetParameter(s.device, s.field, "data", ANARI_ARRAY1D, &bytes);
+    anariCommitParameters(s.device, s.field);
+    s.check(true, "sparse benchmark build");
+    const auto built = Clock::now();
+    const auto image = s.render();
+    const auto done = Clock::now();
+    anariRelease(s.device, bytes);
+    const double buildMs = std::chrono::duration<double,std::milli>(built-start).count();
+    const double renderMs = std::chrono::duration<double,std::milli>(done-built).count();
+    double mean = 0;
+    for (size_t i = 0; i < image.size(); i += 4) mean += image[i];
+    mean /= image.size()/4;
+    std::printf("SPARSE trial=%d build_ms=%.6f render_ms=%.6f mean_red=%.9f\n",
+        trial, buildMs, renderMs, mean);
+    if (trial) { builds.push_back(buildMs); renders.push_back(renderMs); }
+  }
+  std::sort(builds.begin(), builds.end());
+  std::sort(renders.begin(), renders.end());
+  std::printf("SPARSE warm_summary build_ms_min_med_max=%.6f,%.6f,%.6f render_ms_min_med_max=%.6f,%.6f,%.6f\n",
+      builds.front(), builds[2], builds.back(), renders.front(), renders[2], renders.back());
+}
+
 int main()
 {
+  if (const char *extent = std::getenv("NANOVDB_BENCHMARK")) {
+    benchmarkSparse(std::stoi(extent));
+    return 0;
+  }
+  checkHomogeneousTransmittance();
   std::setvbuf(stdout, nullptr, _IONBF, 0);
   checkTransferFunctionUpdates();
   checkDataUpdates();
