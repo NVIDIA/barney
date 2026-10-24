@@ -11,7 +11,7 @@
 #include <cmath>
 #include <algorithm>
 
-#ifndef NANOVDB_TEST_SANITIZERS
+#ifndef NANOVDB_TEST_NO_ALLOC_FAILURE
 // Linux/glibc system-allocation fault injection, not a renderer test hook.
 static std::atomic<size_t> failAllocationSize{0};
 static std::atomic<bool> allocationFailed{false};
@@ -55,7 +55,7 @@ struct Scene
 {
   int errors = 0;
   ANARILibrary library = anariLoadLibrary("barney", status, &errors);
-  ANARIDevice device = anariNewDevice(library, "cpu");
+  ANARIDevice device = anariNewDevice(library, "default");
   ANARISpatialField field;
   ANARIVolume volume;
   ANARIVolume secondVolume;
@@ -116,7 +116,7 @@ struct Scene
       throw std::runtime_error(label);
     std::printf("PASS: %s\n", label);
   }
-  void instanceVolumes()
+  void instanceVolumes(const float *matrix = nullptr)
   {
     auto group = anariNewGroup(device);
     anariSetParameter(device, group, "volume", ANARI_ARRAY1D, &volumes);
@@ -125,7 +125,8 @@ struct Scene
     anariSetParameter(device, instance, "group", ANARI_GROUP, &group);
     const float transform[16] = {-1, 0, 0, 0, 0, 1, 0, 0,
         0, 0, 1, 0, 4, 0, 0, 1};
-    anariSetParameter(device, instance, "transform", ANARI_FLOAT32_MAT4, transform);
+    anariSetParameter(device, instance, "transform", ANARI_FLOAT32_MAT4,
+        matrix ? matrix : transform);
     anariCommitParameters(device, instance);
     auto instances = anariNewArray1D(device, nullptr, nullptr, nullptr, ANARI_INSTANCE, 1);
     *static_cast<ANARIInstance *>(anariMapArray(device, instances)) = instance;
@@ -292,10 +293,92 @@ int main()
         accessor.setValue(nanovdb::Coord(x, y, z), 1.f);
   auto handle = nanovdb::tools::createNanoGrid(source);
   scene.data(handle.data(), handle.size(), true, "real version 32.7 Float grid");
+  {
+    RenderScene withStats, withoutStats;
+    auto noStats = nanovdb::tools::createNanoGrid(source, nanovdb::tools::StatsMode::BBox);
+    withStats.data(handle.data(), handle.size(), true, "render grid with statistics");
+    withoutStats.data(noStats.data(), noStats.size(), true, "render grid without statistics");
+    if (difference(withStats.render(), withoutStats.render()) > 0.005)
+      throw std::runtime_error("statistics must not affect rendering");
+    std::puts("PASS: statistics-independent Float rendering");
+  }
+  {
+    nanovdb::tools::build::Grid<float> affineSource(0.2f);
+    auto a = affineSource.getAccessor();
+    for (int z = 0; z < 4; ++z)
+      for (int y = 0; y < 4; ++y)
+        for (int x = 0; x < 35; ++x)
+          a.setValue(nanovdb::Coord(x,y,z), x < 17 ? 0.2f : 1.f);
+    auto original = nanovdb::tools::createNanoGrid(affineSource);
+    auto mapped = nanovdb::tools::createNanoGrid(affineSource, nanovdb::tools::StatsMode::BBox);
+    auto *g = mapped.grid<float>();
+    const double matrix[9] = {0,-0.5,0, 0.1,0,0.15, 0,0,0.5};
+    const double inverse[9] = {0,10,-3, -2,0,0, 0,0,2};
+    for (int i = 0; i < 9; ++i) {
+      g->mMap.mMatF[i] = float(g->mMap.mMatD[i] = matrix[i]);
+      g->mMap.mInvMatF[i] = float(g->mMap.mInvMatD[i] = inverse[i]);
+    }
+    g->mMap.mVecF[0] = float(g->mMap.mVecD[0] = 2.0);
+    nanovdb::Vec3dBBox world;
+    for (int corner = 0; corner < 8; ++corner)
+      world.expand(g->indexToWorld(nanovdb::Vec3d(
+          corner & 1 ? 35 : 0, corner & 2 ? 4 : 0, corner & 4 ? 4 : 0)));
+    g->mWorldBBox = world;
+    g->mVoxelSize = nanovdb::Vec3d(0.1, 0.5, std::sqrt(0.15*0.15+0.5*0.5));
+    auto *unreflected = original.grid<float>();
+    unreflected->mMap = g->mMap;
+    unreflected->mWorldBBox = g->mWorldBBox;
+    unreflected->mVoxelSize = g->mVoxelSize;
+    // Compose a reflection/translation with the affine header. Unlike baking
+    // an arbitrary shear from an instance, this preserves the header's AABB
+    // domain (and hence the existing boundary-clamped sampling semantics).
+    for (int i = 0; i < 3; ++i) {
+      g->mMap.mMatF[i] = float(g->mMap.mMatD[i] = -g->mMap.mMatD[i]);
+      g->mMap.mInvMatF[3*i] = float(g->mMap.mInvMatD[3*i] = -g->mMap.mInvMatD[3*i]);
+    }
+    g->mWorldBBox = nanovdb::Vec3dBBox(nanovdb::Vec3d(2,0,0), nanovdb::Vec3d(4,4.1,2));
+    RenderScene baked, instanced;
+    baked.data(mapped.data(), mapped.size(), true, "composed affine header without statistics");
+    instanced.instanceVolumes();
+    instanced.data(original.data(), original.size(), true, "affine header composed with ANARI instance");
+    // Instance IDs change the random sequence. Reduce independent Monte Carlo
+    // noise rather than requiring bitwise equality with the baked scene.
+    const int affineSamples = 4096;
+    for (auto *s : {&baked, &instanced}) {
+      anariSetParameter(s->device, s->renderer, "pixelSamples", ANARI_INT32, &affineSamples);
+      anariCommitParameters(s->device, s->renderer);
+    }
+    const double delta = difference(baked.render(), instanced.render());
+    std::printf("affine header/instance delta=%g\n", delta);
+    if (delta > 0.005) throw std::runtime_error("header/instance affine rendering mismatch");
+    float b[6], c[6];
+    anariGetProperty(baked.device, baked.world, "bounds", ANARI_FLOAT32_BOX3, b, sizeof(b), ANARI_WAIT);
+    anariGetProperty(instanced.device, instanced.world, "bounds", ANARI_FLOAT32_BOX3, c, sizeof(c), ANARI_WAIT);
+    for (int i = 0; i < 6; ++i)
+      if (std::abs(b[i]-c[i]) > 1e-5f) throw std::runtime_error("header/instance affine bounds mismatch");
+    std::puts("PASS: affine Float rendering and ANARI instance composition");
+  }
   const auto *raw = static_cast<const unsigned char *>(handle.data());
   std::vector<unsigned char> bad(raw, raw + handle.size());
   nanovdb::GridData header;
   std::memcpy(&header, bad.data(), sizeof(header));
+  for (double extent : {0.0, 1e300}) {
+    std::memcpy(&header, raw, sizeof(header));
+    header.mWorldBBox = nanovdb::Vec3dBBox(nanovdb::Vec3d(0.0), nanovdb::Vec3d(extent));
+    std::memcpy(bad.data(), &header, sizeof(header));
+    scene.data(bad.data(), bad.size(), false, "unrepresentable nonempty macrocell domain");
+    scene.data(handle.data(), handle.size(), true, "recover after unrepresentable domain");
+  }
+  for (bool nonfinite : {false, true}) {
+    std::memcpy(&header, raw, sizeof(header));
+    header.mMap.mMatD[0] = header.mMap.mMatF[0] =
+        nonfinite ? std::numeric_limits<float>::infinity() : 0.f;
+    std::memcpy(bad.data(), &header, sizeof(header));
+    scene.data(bad.data(), bad.size(), false,
+        nonfinite ? "nonfinite affine map" : "singular affine map");
+    scene.data(handle.data(), handle.size(), true, "recover after invalid affine map");
+  }
+  std::memcpy(&header, raw, sizeof(header));
   header.mVersion = nanovdb::Version(31, 0, 0);
   std::memcpy(bad.data(), &header, sizeof(header));
   scene.data(bad.data(), bad.size(), false, "incompatible major version");
@@ -357,7 +440,12 @@ int main()
   std::memcpy(bad.data() + rootOffset + offsetof(RootData, mBBox),
       &hugeBounds, sizeof(hugeBounds));
   scene.data(bad.data(), bad.size(), false, "unrepresentable index dimensions");
-#ifndef NANOVDB_TEST_SANITIZERS
+  const nanovdb::CoordBBox manyCells(nanovdb::Coord(0), nanovdb::Coord(1048575));
+  std::memcpy(bad.data() + rootOffset + offsetof(RootData, mBBox),
+      &manyCells, sizeof(manyCells));
+  scene.data(bad.data(), bad.size(), false, "macrocell count exceeds signed RTC indexing");
+  scene.data(handle.data(), handle.size(), true, "recover after macrocell count overflow");
+#ifndef NANOVDB_TEST_NO_ALLOC_FAILURE
   scene.data(raw, handle.size(), true, "valid before allocator failure");
   auto update = anariNewArray1D(scene.device, raw, nullptr, nullptr,
       ANARI_UINT8, handle.size());
@@ -476,7 +564,28 @@ int main()
     throw std::runtime_error("empty-to-populated retains stale data");
   std::puts("PASS: empty transition rendering");
 
-#ifndef NANOVDB_TEST_SANITIZERS
+#ifndef NANOVDB_TEST_NO_ALLOC_FAILURE
+  {
+    nanovdb::tools::build::Grid<float> wideSource(0.3f);
+    wideSource.getAccessor().setValue(nanovdb::Coord(0), 1.f);
+    wideSource.getAccessor().setValue(nanovdb::Coord(1024, 3, 3), 1.f);
+    auto wide = nanovdb::tools::createNanoGrid(wideSource);
+    auto bytes = anariNewArray1D(updated.device, wide.data(), nullptr, nullptr,
+        ANARI_UINT8, wide.size());
+    anariSetParameter(updated.device, updated.field, "data", ANARI_ARRAY1D, &bytes);
+    anariCommitParameters(updated.device, updated.field);
+    allocationFailed = false;
+    failAllocationSize = 544; // 65 range pairs, rounded to CPU's 32-byte alignment
+    updated.check(false, "macrocell allocation failure");
+    failAllocationSize = 0;
+    if (!allocationFailed || difference(updated.render(), geometryOnly) > 0.005)
+      throw std::runtime_error("macrocell allocation failure retains volumes");
+    anariRelease(updated.device, bytes);
+    updated.data(replacement.data(), replacement.size(), true, "macrocell allocator recovery");
+    if (difference(updated.render(), fresh) > 0.005)
+      throw std::runtime_error("macrocell allocation recovery differs from fresh");
+    std::puts("PASS: macrocell allocation recovery rendering");
+  }
   for (auto failure : {std::pair<size_t, unsigned>{handle.size() + NANOVDB_DATA_ALIGNMENT, 0},
            {handle.size(), 0}, {handle.size() + NANOVDB_DATA_ALIGNMENT, 1}}) {
     auto failedUpdate = anariNewArray1D(updated.device, raw, nullptr, nullptr,
@@ -501,7 +610,7 @@ int main()
     std::puts("PASS: shared-volume allocation recovery rendering");
   }
 #else
-  std::puts("SKIP: allocator fault injection is covered in the non-sanitized run");
+  std::puts("SKIP: allocator fault injection requires the non-sanitized CPU run");
 #endif
   if (replacement.size() != handle.size())
     throw std::runtime_error("in-place fixtures must have equal byte sizes");

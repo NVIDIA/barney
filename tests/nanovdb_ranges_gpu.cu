@@ -1,0 +1,109 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+#include "native/volume/NanoVDB.h"
+#include "native/volume/NanoVDBHelpers.h"
+#include <nanovdb/tools/CreateNanoGrid.h>
+#include <cuda_runtime.h>
+#include <cstdio>
+#include <stdexcept>
+
+using namespace BARNEY_NS::native;
+using namespace owl::common;
+
+static void check(cudaError_t error)
+{
+  if (error != cudaSuccess) throw std::runtime_error(cudaGetErrorString(error));
+}
+
+__global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
+                           nanovdb::Coord dims, bool identity, int *failures)
+{
+#if RTC_DEVICE_CODE
+  const int tid = int(blockIdx.x * blockDim.x + threadIdx.x);
+  if (tid >= dims[0]*dims[1]*dims[2]) return;
+  const int cell[3] = {tid % dims[0], (tid/dims[0]) % dims[1], tid/(dims[0]*dims[1])};
+  nanovdb::Vec3d lo, hi;
+  const auto world = grid->worldBBox();
+  for (int i = 0; i < 3; ++i) {
+    const double spacing = (world.max()[i]-world.min()[i])/dims[i];
+    lo[i] = world.min()[i] + cell[i]*spacing;
+    hi[i] = world.min()[i] + (cell[i]+1)*spacing;
+  }
+  const auto range = barney_nanovdb::scalarRange(*grid, nanovdb::Vec3dBBox(lo,hi));
+  NanoVDBDataSampler<float>::DD sampler;
+  sampler.nvdbGrid = grid;
+  const auto bounds = grid->indexBBox();
+  sampler.indexBounds = box3i(vec3i(bounds.min()[0],bounds.min()[1],bounds.min()[2]),
+                             vec3i(bounds.max()[0],bounds.max()[1],bounds.max()[2]));
+  if (identity && tid == 0) {
+    if (sampler.sample(vec3f(-18.5f,2.5f,-2.5f)) != 1.f
+        || sampler.sample(vec3f(-18.f,2.5f,-2.5f)) != -3.f
+        || sampler.sample(vec3f(-17.5f,2.5f,-2.5f)) != -7.f
+        || range.lower > -7.f || range.upper < 9.f)
+      atomicAdd(failures, 1);
+  }
+  for (int z = 0; z <= 4; ++z)
+    for (int y = 0; y <= 4; ++y)
+      for (int x = 0; x <= 4; ++x) {
+        const float value = sampler.sample(vec3f(float(lo[0]+(hi[0]-lo[0])*x/4),
+            float(lo[1]+(hi[1]-lo[1])*y/4), float(lo[2]+(hi[2]-lo[2])*z/4)));
+        if (!isfinite(value) || value < range.lower || value > range.upper)
+          atomicAdd(failures, 1);
+      }
+#endif
+}
+
+int main()
+{
+  int devices = 0;
+  auto error = cudaGetDeviceCount(&devices);
+  if (error != cudaSuccess || devices == 0) {
+    std::printf("SKIP: CUDA device unavailable: %s\n", cudaGetErrorString(error));
+    return 77;
+  }
+  cudaDeviceProp properties;
+  check(cudaGetDeviceProperties(&properties, 0));
+  std::printf("CUDA device: %s, compute %d.%d; devices=%d\n",
+              properties.name, properties.major, properties.minor, devices);
+  nanovdb::tools::build::Grid<float> source(9.f);
+  auto accessor = source.getAccessor();
+  accessor.setValue(nanovdb::Coord(-19,2,-3), 1.f);
+  accessor.setValue(nanovdb::Coord(109,66,61), 2.f);
+  for (auto stats : {nanovdb::tools::StatsMode::BBox, nanovdb::tools::StatsMode::All}) {
+    auto handle = nanovdb::tools::createNanoGrid(source, stats);
+    auto *grid = handle.grid<float>();
+    auto *leaf = const_cast<nanovdb::NanoLeaf<float> *>(grid->getAccessor().probeLeaf(nanovdb::Coord(-18,2,-3)));
+    leaf->setValueOnly(nanovdb::Coord(-18,2,-3), -7.f);
+    for (int affine = 0; affine < 2; ++affine) {
+      if (affine) {
+        const double matrix[9] = {0,-2,0, 1,0,0.5, 0,0,0.75};
+        const double inverse[9] = {0,1,-2.0/3, -0.5,0,0, 0,0,4.0/3};
+        for (int i = 0; i < 9; ++i) {
+          grid->mMap.mMatF[i] = float(grid->mMap.mMatD[i] = matrix[i]);
+          grid->mMap.mInvMatF[i] = float(grid->mMap.mInvMatD[i] = inverse[i]);
+        }
+        grid->mMap.mVecF[0] = float(grid->mMap.mVecD[0] = 7.25);
+        nanovdb::Vec3dBBox world;
+        for (int corner = 0; corner < 8; ++corner)
+          world.expand(grid->indexToWorld(nanovdb::Vec3d(corner & 1 ? 110 : -19,
+              corner & 2 ? 67 : 2, corner & 4 ? 62 : -3)));
+        grid->mWorldBBox = world;
+      }
+      nanovdb::NanoGrid<float> *deviceGrid;
+      int *failures;
+      check(cudaMalloc(&deviceGrid, handle.size()));
+      check(cudaMallocManaged(&failures, sizeof(int)));
+      *failures = 0;
+      check(cudaMemcpy(deviceGrid, handle.data(), handle.size(), cudaMemcpyHostToDevice));
+      const auto dims = barney_nanovdb::macrocellDims(grid->indexBBox());
+      const int count = dims[0]*dims[1]*dims[2];
+      checkRanges<<<(count+127)/128,128>>>(deviceGrid, dims, !affine, failures);
+      check(cudaGetLastError());
+      check(cudaDeviceSynchronize());
+      if (*failures) throw std::runtime_error("GPU local ranges underbound production samples");
+      check(cudaFree(deviceGrid));
+      check(cudaFree(failures));
+      std::printf("PASS: GPU ranges/samples: %d cells, stats=%d affine=%d\n", count, int(stats), affine);
+    }
+  }
+}

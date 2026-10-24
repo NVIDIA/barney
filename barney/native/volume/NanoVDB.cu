@@ -9,6 +9,7 @@
 #include "native/Context.h"
 #include "native/common/Texture.h"
 #include "native/volume/MCGrid.cuh"
+#include "native/volume/NanoVDBHelpers.h"
 #include <nanovdb/HostBuffer.h>
 #include <nanovdb/GridHandle.h>
 
@@ -42,21 +43,16 @@ namespace BARNEY_NS {
       if (mcID.y >= mcGrid.dims.y) return;
       if (mcID.z >= mcGrid.dims.z) return;
 
-      vec3i lo = dd.indexBounds.lower+(vec3i(mcID)*dd.gridSize) / mcGrid.dims;
-      vec3i hi = dd.indexBounds.lower+(vec3i(mcID+1)*dd.gridSize) / mcGrid.dims;
-      nanovdb::CoordBBox bbox({lo.x,lo.y,lo.z},
-                              {hi.x+1,hi.y+1,hi.z+1});
-
-      GridT *gridPtr = (GridT *)dd.gridData;
-      auto acc = gridPtr->getAccessor();
-
-      range1f scalarRange;
-      for (nanovdb::CoordBBox::Iterator iter = bbox.begin(); iter; ++iter) {
-        float value = acc.getValue(*iter);
-        scalarRange.extend(value);
+      nanovdb::Vec3d lo, hi;
+      for (int axis = 0; axis < 3; ++axis) {
+        lo[axis] = double(mcGrid.gridOrigin[axis])
+          + double(mcID[axis]) * mcGrid.gridSpacing[axis];
+        hi[axis] = double(mcGrid.gridOrigin[axis])
+          + double(mcID[axis] + 1) * mcGrid.gridSpacing[axis];
       }
-      int cellIdx = mcID.x + mcGrid.dims.x * (mcID.y + mcGrid.dims.y * (mcID.z));
-      mcGrid.scalarRanges[cellIdx] = scalarRange;
+      const auto range = barney_nanovdb::scalarRange(
+        *(const GridT *)dd.gridData, nanovdb::Vec3dBBox(lo, hi));
+      mcGrid.scalarRanges[tid] = {range.lower, range.upper};
 #endif
     }
   
@@ -76,16 +72,28 @@ namespace BARNEY_NS {
     {
 #if BARNEY_HAVE_NANOVDB
       MCGrid::SP mcGrid = std::make_shared<MCGrid>(devices);
-      // Use one conservative macro cell. This avoids compiling and launching
-      // a large NanoVDB statistics kernel while preserving correct majorants.
-      vec3i mcDims(1);
-      mcGrid->resize(mcDims);
+      const auto dims = barney_nanovdb::macrocellDims(nanovdb::CoordBBox(
+        nanovdb::Coord(indexBounds.lower.x, indexBounds.lower.y, indexBounds.lower.z),
+        nanovdb::Coord(indexBounds.upper.x, indexBounds.upper.y, indexBounds.upper.z)));
+      const vec3i mcDims(dims[0], dims[1], dims[2]);
+      const size_t count = size_t(mcDims.x) * mcDims.y * mcDims.z;
       mcGrid->gridOrigin = worldBounds.lower;
       mcGrid->gridSpacing = worldBounds.size() * rcp(vec3f(mcDims));
+      for (int axis = 0; axis < 3; ++axis) {
+        const float spacing = mcGrid->gridSpacing[axis];
+        if (!std::isfinite(worldBounds.lower[axis])
+            || !std::isfinite(worldBounds.upper[axis])
+            || !(spacing > 0.f) || !std::isfinite(spacing)
+            || !std::isfinite(1.f / spacing))
+          throw std::runtime_error("Unrepresentable NanoVDB macrocell domain");
+      }
+      mcGrid->resize(mcDims);
 
       for (auto device : *devices) {
-        auto *buffer = mcGrid->getPLD(device)->scalarRangesBuffer;
-        buffer->upload(&valueRange, sizeof(valueRange));
+        SetActiveGPU forDuration(device);
+        __rtc_launch(device->rtc, (NanoVDBData_computeMCs<float>),
+                     int((count + 127) / 128), 128,
+                     mcGrid->getDD(device), getDD(device));
       }
       for (auto device : *devices)
         device->sync();
@@ -174,11 +182,10 @@ namespace BARNEY_NS {
       const auto *floatGrid = gridHandle.grid<float>();
       if (!floatGrid)
         throw std::runtime_error("barney::NanoVDBData: expected Float grid");
+      barney_nanovdb::validateMap(floatGrid->map());
       // GridMetaData pointer casts require the root immediately after the tree.
       const nanovdb::GridMetaData metadata(*floatGrid);
       const auto *gridMetadata = &metadata;
-      valueRange = {floatGrid->tree().root().minimum(),
-                    floatGrid->tree().root().maximum()};
       auto boundsMin = gridMetadata->worldBBox().min();
       auto boundsMax = gridMetadata->worldBBox().max();
     
@@ -203,6 +210,9 @@ namespace BARNEY_NS {
         if (!supported)
           throw std::runtime_error
             ("barney::NanoVDBData: unsupported grid type");
+      // Construction failure must reach the adapter's commit exception handler,
+      // not surface later while building the world with a supposedly valid field.
+      mcGrid = buildMCs();
     }
 
   }

@@ -173,9 +173,9 @@ namespace BARNEY_NS {
         SetActiveGPU forDuration(device);
         PLD *pld = getPLD(device);
         auto rtc = device->rtc;
+        auto *replacement = rtc->createBuffer(sizeof(range1f)*numCells);
         rtc->freeBuffer(pld->scalarRangesBuffer);
-        pld->scalarRangesBuffer
-          = rtc->createBuffer(sizeof(range1f)*numCells);
+        pld->scalarRangesBuffer = replacement;
       }
       for (auto device : *devices) 
         device->sync();

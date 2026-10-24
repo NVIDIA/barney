@@ -16,6 +16,7 @@
 #include <nanovdb/HostBuffer.h>
 #include <nanovdb/NanoVDB.h>
 #include <nanovdb/math/Math.h>
+#include "native/volume/NanoVDBHelpers.h"
 
 // glm
 #include <glm/ext/vector_float3.hpp>
@@ -247,6 +248,7 @@ namespace BARNEY_NS {
         return;
       }
 
+      barney_nanovdb::validateMap(header.mMap);
       if (tree.mVoxelCount == 0) {
         m_valid = true;
         return;
@@ -255,14 +257,7 @@ namespace BARNEY_NS {
       nanovdb::CoordBBox indexBounds;
       std::memcpy(&indexBounds, static_cast<const char *>(m_data->data())
                   + sizeof(header) + rootOffset, sizeof(indexBounds));
-      for (int axis = 0; axis < 3; ++axis) {
-        const int64_t dim = int64_t(indexBounds.max()[axis])
-                          - int64_t(indexBounds.min()[axis]) + 1;
-        if (dim <= 0 || dim > std::numeric_limits<int>::max()) {
-          reportMessage(ANARI_SEVERITY_ERROR, "Unrepresentable NanoVDB dimensions");
-          return;
-        }
-      }
+      barney_nanovdb::macrocellDims(indexBounds);
 
       // ANARI byte arrays need not have NanoVDB alignment.
       auto hostbuffer = nanovdb::HostBuffer::create(header.mGridSize);

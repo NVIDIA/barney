@@ -1,4 +1,4 @@
-# NanoVDB ingestion and recovery regression
+# NanoVDB Float regression tests
 
 Run from a Barney source workspace with a configured CPU build:
 
@@ -38,13 +38,20 @@ Checks precede their corresponding reads:
    bounds, background or topology. No native field or macrocell launch is made.
 6. For nonempty fields, copy the root index bbox; compute each dimension in
    int64 and require a positive, int-representable result. No extent-to-file-size
-   restriction is imposed. The existing singleton macrocell allocation is
-   fixed-size; finer-grid arithmetic belongs to the macrocell ticket.
+   restriction is imposed. Rounded-up 16-voxel-target dimensions and their
+   product must fit the existing signed-int MC/DDA/majorant indexing, and range
+   allocation bytes (including alignment padding) must fit `size_t`.
 7. Copy only the declared grid into aligned HostBuffer storage. CPU RTC buffers
    also guarantee 32-byte alignment, with checked rounding and allocation
    failure exceptions. CUDA/other device execution is not covered by this test.
 8. Native metadata is constructed through the typed grid, not a GridMetaData
    pointer cast: the root need not immediately follow TreeData.
+9. Both stored float/double affine matrices and inverses must be finite and
+   nonsingular; translations must be finite. Determinants use widened arithmetic
+   and an exact zero test, not an epsilon. The eventual float MC origin, extent,
+   spacing and reciprocal spacing must be representable (finite, positive
+   spacing). These are representation checks, not a near-singular map cutoff.
+   Zero-active grids still skip all extent/allocation/construction work.
 
 Trailing padding is accepted even if it contains grid magic/a complete second
 byte sequence: the **declared count**, not a signature scan, determines rejection.
@@ -85,7 +92,10 @@ for a one-shot failure, not an internal renderer mock. It exercises the adapter
 HostBuffer, native upload buffer, and native download HostBuffer. Each failure
 must produce an ANARI error, invalidate the field, remove both volume images
 and bounds, and recover to the fresh image. Sanitizer runs disable this hook so
-it cannot interfere with sanitizer allocation interceptors.
+it cannot interfere with sanitizer allocation interceptors. A fourth shared-volume
+case fails the CPU macrocell range-buffer allocation, checks that both volumes
+vanish, and compares recovery to a fresh scene. GPU runs explicitly skip these
+CPU/system-allocation hooks; device allocator failure is not claimed tested.
 
 ## Sanitizers and known unrelated issues
 
@@ -124,7 +134,104 @@ cmake -S "$PWD" -B "$PWD/_out/_cmake" \
 cmake --build "$PWD/_out/_cmake" -j 4
 ```
 
-Only the enabled Embree CPU backend was verified. CUDA/OptiX/HIP, device
-sanitizers and multi-GPU behavior are unverified. Filtering, finer conservative
-ranges, affine-map validation and quantized acceptance are subsequent tickets,
-not claims of this ingestion test.
+## Conservative macrocell construction
+
+The bundled `nanovdb/tools/cuda/GridStats.cuh` implements device statistics,
+including `updateGridStats`, but iterates `cbeginValueOn()` and writes active-only
+per-node extrema/bounds. It neither includes all stored inactive/background
+values nor produces reconstruction-aware world-aligned local ranges. It is not
+suitable for this task. Historical Barney (`c24899f0`'s parent) used rounded-up
+16-voxel dimensions and one GPU thread per cell, but associated index blocks
+with world cells and used unchecked int products. That association is not valid
+under rotation/shear. VisRTX's interpolation margin is useful comparison
+history, not a proof for Barney's transformed/clamped sampler.
+
+Production now launches the Barney RTC compute kernel on every selected device
+(one thread per macrocell). CPU RTC executes the same range helper on the host;
+CPU results alone are not GPU evidence. Dimensions are `ceil(indexExtent/16)`;
+the world header AABB is divided uniformly into those counts. Thus 16 is the
+historical index-extent target, not a guarantee of an exact 16-sample footprint
+under arbitrary affine maps. Small and partial blocks are retained.
+
+For each world cell, `NanoVDBHelpers.h` encloses the inverse affine mapping using
+outward-rounded intervals of the **stored float** coefficients. Subtraction,
+products and the right-associated NanoVDB matrix sum are enclosed, whether
+fused or unfused. It includes the existing -0.5 centering shift, clamps to the
+true integer index bounds, and scans floor(lower) through floor(upper)+1
+(inclusive, clipped to the index bounds). This covers both linear interpolation
+neighbors and the nearest neighbor footprint. No filter-specific rebuild is
+needed. The integer scan uses int64 loop counters and NanoVDB accessors, so
+stored inactive values, tile values and sparse background all participate.
+Nonfinite interval intermediates conservatively select the entire affected
+index axis instead of imposing a determinant threshold. The final range is
+outward widened for float interpolation rounding. No root extrema are read and
+no separate topology/content-validation scan is added.
+
+This is conservative but intentionally not topology-aware: construction work
+is proportional to the sum of inverse-mapped cell AABB volumes, not stored node
+count. Rotation/shear can increase overlap and loosen ranges. Huge sparse
+extents can be expensive; there is no file-size-proportional cap or work timeout.
+Large sparse-scene timing/memory benchmarks remain ticket 05, not an inferred
+speedup claim here.
+
+Ranges are built during native field commit so construction/allocation failures
+reach the adapter's existing error/invalidation handler. The shared MC resize
+allocates a replacement before freeing its old buffer, permitting exception-safe
+cleanup. Scalar ranges remain shared; transfer-function majorants remain per
+volume. Integer bounds are compared before the sampler's float-to-int
+conversion, preventing float-rounded large origins from fetching outside the
+clamped grid.
+
+## Numerical and GPU checks
+
+```sh
+bash tests/test_nanovdb_ranges.sh "$PWD/_out/_cmake"
+# Fresh GPU build, separate from the CPU build:
+cmake -S "$PWD" -B "$PWD/_out/_gpu" -G Ninja \
+  -DBARNEY_BACKEND_OPTIX=ON -DBARNEY_BACKEND_CPU=OFF \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CUDA_ARCHITECTURES=75
+cmake --build "$PWD/_out/_gpu" -j 4
+bash tests/test_nanovdb_ranges_gpu.sh "$PWD/_out/_gpu"
+NANOVDB_TEST_GPU=1 bash tests/test_nanovdb_ingestion.sh "$PWD/_out/_gpu"
+COMPUTE_SANITIZER=1 bash tests/test_nanovdb_ranges_gpu.sh "$PWD/_out/_gpu"
+```
+
+The numerical tests exercise the actual range helper and production sampler,
+not a duplicate sampler. Hand-calculated center/interpolation values supplement
+interior/face/edge/corner range assertions. Cases include negative/nonzero
+origins, small/partial cells, dense-ramp local tightness and halos, an origin
+beyond exactly representable float integers, inactive -7 and background 9
+outside active extrema [1,2], statistics present/absent, translation,
+nonuniform scaling, rotation, shear and a 1e-12 invertible scale. The standalone
+CUDA test checks 225 cells (including a partial launch block) and 125 boundary
+and interior samples per cell for four statistics/map combinations.
+
+End-to-end tests compare statistics-present/absent scenes and exercise affine
+headers with ANARI instances. The latter composes a reflection/translation with
+a translated, scaled, rotated and sheared header. It compares against a baked
+combined header while preserving its AABB sampling domain. Baking an arbitrary
+shear from an instance is **not** an equivalent oracle: the header's world AABB
+contains additional boundary-clamped regions. Instance IDs change random
+sequences, so this comparison uses 4096 samples/pixel (other lifecycle tests use
+64). The 0.005 mean RGBA tolerance is retained: observed CPU/OptiX differences
+were about 0.00225/0.00207; at 64 independent samples they were about 0.018.
+Bounds are also compared. This does not change the existing centering policy.
+
+Verified hardware: one NVIDIA RTX 5880 Ada Generation, compute 8.9, CUDA 13.4,
+OptiX 9.1; CPU uses Embree 4.4.1. `nvidia-smi -L` crashes in this environment,
+but a direct CUDA runtime query and real device kernel/render execution succeed.
+The unsuppressed standalone CUDA memcheck reports **zero errors**. Full OptiX
+rendering under Compute Sanitizer is **not verified**: both this change and
+unchanged integration 639c8aef fail with an internal sanitizer hardware-exception
+error followed by CUDA error 700 on the first populated render. Ticket 09 tracks
+that baseline/tooling limitation; no suppression or full device-safety claim is
+made. Normal OptiX integration tests pass. Multi-GPU, native CUDA RT, HIP and
+HIPRT were not exercised. Nearest dispatch/filter updates and quantized types
+remain later tickets.
+
+The repository's `just build` must be invoked from the ticket workspace. The
+initial direct configure selected `lib64`, while the recipe removes a file in
+`lib`; its install completed but cleanup failed. Setting
+`-DCMAKE_INSTALL_LIBDIR=lib` in the CPU build fixed that local configuration
+mismatch; the workspace-specific `just build` then passed. Direct CMake builds
+and recipe results are separate checks.

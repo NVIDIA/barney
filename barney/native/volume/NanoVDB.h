@@ -63,7 +63,6 @@ namespace BARNEY_NS {
       box3i indexBounds;
       vec3f voxelSize;
       vec3i gridSize;
-      range1f valueRange;
       nanovdb::GridType gridType;
     };
 
@@ -110,19 +109,24 @@ namespace BARNEY_NS {
 
       // Clamp to the valid voxel range so boundary rays extrapolate the outermost
       // voxel value rather than blending with the background (inactive) value.
-      indexPos[0] = nanovdb::math::Clamp(indexPos[0],
-                                         (float)indexBounds.lower.x, (float)indexBounds.upper.x);
-      indexPos[1] = nanovdb::math::Clamp(indexPos[1],
-                                         (float)indexBounds.lower.y, (float)indexBounds.upper.y);
-      indexPos[2] = nanovdb::math::Clamp(indexPos[2],
-                                         (float)indexBounds.lower.z, (float)indexBounds.upper.z);
-
-      int x0 = nanovdb::math::Floor(indexPos[0]);
-      int y0 = nanovdb::math::Floor(indexPos[1]);
-      int z0 = nanovdb::math::Floor(indexPos[2]);
-      const float fx = float(indexPos[0] - x0);
-      const float fy = float(indexPos[1] - y0);
-      const float fz = float(indexPos[2] - z0);
+      vec3i base;
+      vec3f fraction;
+      for (int axis = 0; axis < 3; ++axis) {
+        // Compare before conversion: float(INT_MAX) is outside the int range,
+        // and float-rounded bounds can otherwise reach voxels outside the box.
+        if (double(indexPos[axis]) <= indexBounds.lower[axis]) {
+          base[axis] = indexBounds.lower[axis];
+          fraction[axis] = 0.f;
+        } else if (double(indexPos[axis]) >= indexBounds.upper[axis]) {
+          base[axis] = indexBounds.upper[axis];
+          fraction[axis] = 0.f;
+        } else {
+          base[axis] = nanovdb::math::Floor(indexPos[axis]);
+          fraction[axis] = float(double(indexPos[axis]) - base[axis]);
+        }
+      }
+      const int x0 = base.x, y0 = base.y, z0 = base.z;
+      const float fx = fraction.x, fy = fraction.y, fz = fraction.z;
       const int x1 = x0 < indexBounds.upper.x ? x0 + 1 : x0;
       const int y1 = y0 < indexBounds.upper.y ? y0 + 1 : y0;
       const int z1 = z0 < indexBounds.upper.z ? z0 + 1 : z0;
