@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <anari/anari.h>
 #include <nanovdb/tools/CreateNanoGrid.h>
+#include "nanovdb_fixtures.h"
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -18,10 +19,13 @@
 static std::atomic<size_t> failAllocationSize{0};
 static std::atomic<bool> allocationFailed{false};
 static std::atomic<unsigned> skipAllocationMatches{0};
+static std::atomic<bool> failAlignedOnly{false};
 extern "C" void *__libc_malloc(size_t);
 extern "C" void *__libc_memalign(size_t, size_t);
-static bool failAllocation(size_t size)
+static bool failAllocation(size_t size, bool aligned = false)
 {
+  if (failAlignedOnly && !aligned)
+    return false;
   if (size && failAllocationSize == size && skipAllocationMatches > 0) {
     --skipAllocationMatches;
     return false;
@@ -40,7 +44,7 @@ extern "C" void *malloc(size_t size) noexcept
 }
 extern "C" void *aligned_alloc(size_t alignment, size_t size) noexcept
 {
-  return failAllocation(size) ? nullptr : __libc_memalign(alignment, size);
+  return failAllocation(size, true) ? nullptr : __libc_memalign(alignment, size);
 }
 #endif
 
@@ -701,6 +705,11 @@ int main()
   auto handle = nanovdb::tools::createNanoGrid(source);
   scene.data(handle.data(), handle.size(), true, "real version 32.7 Float grid");
   {
+    auto extreme = nanovdb_test::extremeAffineGrid();
+    scene.data(extreme.data(), extreme.size(), true, "accept extreme finite affine domain");
+    scene.data(handle.data(), handle.size(), true, "replace extreme finite affine domain");
+  }
+  {
     RenderScene withStats, withoutStats;
     auto noStats = nanovdb::tools::createNanoGrid(source, nanovdb::tools::StatsMode::BBox);
     withStats.data(handle.data(), handle.size(), true, "render grid with statistics");
@@ -722,17 +731,7 @@ int main()
     auto *g = mapped.template grid<BuildT>();
     const double matrix[9] = {0,-0.5,0, 0.1,0,0.15, 0,0,0.5};
     const double inverse[9] = {0,10,-3, -2,0,0, 0,0,2};
-    for (int i = 0; i < 9; ++i) {
-      g->mMap.mMatF[i] = float(g->mMap.mMatD[i] = matrix[i]);
-      g->mMap.mInvMatF[i] = float(g->mMap.mInvMatD[i] = inverse[i]);
-    }
-    g->mMap.mVecF[0] = float(g->mMap.mVecD[0] = 2.0);
-    nanovdb::Vec3dBBox world;
-    for (int corner = 0; corner < 8; ++corner)
-      world.expand(g->indexToWorld(nanovdb::Vec3d(
-          corner & 1 ? 35 : 0, corner & 2 ? 4 : 0, corner & 4 ? 4 : 0)));
-    g->mWorldBBox = world;
-    g->mVoxelSize = nanovdb::Vec3d(0.1, 0.5, std::sqrt(0.15*0.15+0.5*0.5));
+    nanovdb_test::setAffine(*g, matrix, inverse, nanovdb::Vec3d(2,0,0));
     auto *unreflected = original.template grid<BuildT>();
     unreflected->mMap = g->mMap;
     unreflected->mWorldBBox = g->mWorldBBox;
@@ -983,6 +982,33 @@ int main()
     wideSource.getAccessor().setValue(nanovdb::Coord(0), 1.f);
     wideSource.getAccessor().setValue(nanovdb::Coord(1024, 3, 3), 1.f);
     auto wide = nanovdb::tools::createNanoGrid(wideSource);
+    // 65 cells: ranges occupy 544 aligned bytes, each volume's majorants
+    // occupy 288. Fail each volume in turn, after range construction succeeds.
+    for (unsigned volumeIndex : {0u, 1u}) {
+      auto bytes = anariNewArray1D(updated.device, wide.data(), nullptr, nullptr,
+          ANARI_UINT8, wide.size());
+      anariSetParameter(updated.device, updated.field, "data", ANARI_ARRAY1D, &bytes);
+      anariCommitParameters(updated.device, updated.field);
+      allocationFailed = false;
+      skipAllocationMatches = volumeIndex;
+      failAlignedOnly = true;
+      failAllocationSize = 288;
+      updated.check(false, "dependent majorant allocation failure");
+      failAllocationSize = 0;
+      failAlignedOnly = false;
+      if (!allocationFailed || difference(updated.render(), geometryOnly) > 0.005)
+        throw std::runtime_error("majorant failure retains shared volumes");
+      anariGetProperty(updated.device, updated.world, "bounds", ANARI_FLOAT32_BOX3,
+          bounds, sizeof(bounds), ANARI_WAIT);
+      for (int i = 0; i < 6; ++i)
+        if (std::abs(bounds[i] - sphereBounds[i]) > 1e-5f)
+          throw std::runtime_error("majorant failure retains bounds");
+      anariRelease(updated.device, bytes);
+      updated.data(replacement.data(), replacement.size(), true, "majorant allocator recovery");
+      if (difference(updated.render(), fresh) > 0.005)
+        throw std::runtime_error("majorant recovery differs from fresh");
+      std::puts("PASS: majorant failure shared-volume invalidation and recovery");
+    }
     auto bytes = anariNewArray1D(updated.device, wide.data(), nullptr, nullptr,
         ANARI_UINT8, wide.size());
     anariSetParameter(updated.device, updated.field, "data", ANARI_ARRAY1D, &bytes);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
+#include "nanovdb_fixtures.h"
 
 // Included by the CPU numerical client; uses its production sampling seam.
 template<typename BuildT>
@@ -32,19 +33,9 @@ static void checkQuantized()
     if (std::abs(sampler.sample(vec3f(-18.25f,2.5f,-2.5f)) - (.75f*a+.25f*b)) > 1e-5f)
       throw std::runtime_error("quantized linear differs from decoded corner weights");
     for (int affine = 0; affine < 2; ++affine) {
-      if (affine) {
-        const double matrix[9] = {0,-2,0, 1,0,.5, 0,0,.75};
-        const double inverse[9] = {0,1,-2.0/3, -.5,0,0, 0,0,4.0/3};
-        for (int i = 0; i < 9; ++i) {
-          grid->mMap.mMatF[i] = float(grid->mMap.mMatD[i] = matrix[i]);
-          grid->mMap.mInvMatF[i] = float(grid->mMap.mInvMatD[i] = inverse[i]);
-        }
-        grid->mMap.mVecF[0] = float(grid->mMap.mVecD[0] = 7.25);
-      }
-      nanovdb::Vec3dBBox world;
-      for (int corner = 0; corner < 8; ++corner)
-        world.expand(grid->indexToWorld(nanovdb::Vec3d(
-            corner & 1 ? 16 : -19, corner & 2 ? 7 : 2, corner & 4 ? 2 : -3)));
+      if (affine)
+        nanovdb_test::setComposedAffine(*grid);
+      const auto world = grid->worldBBox();
       for (int cell = 0; cell < 3; ++cell) {
         auto lo = world.min(), hi = world.max();
         lo[0] += cell*(world.max()[0]-world.min()[0])/3;

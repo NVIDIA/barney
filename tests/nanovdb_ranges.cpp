@@ -3,6 +3,7 @@
 #include "native/volume/NanoVDB.h"
 #include "native/volume/NanoVDBHelpers.h"
 #include "nanovdb_majorants.h"
+#include "nanovdb_fixtures.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cstdio>
 #include <stdexcept>
@@ -66,32 +67,22 @@ int main()
     {1,0,0, 0,1,0, 0,0,1},
     {2,0,0, 0,0.5,0, 0,0,3},
     {0,-1,0, 1,0,0, 0,0,1},
-    {1,2,0, 0,1,0.5, 0,0,1},
-    {0,-2,0, 1,0,0.5, 0,0,0.75}
+    {1,2,0, 0,1,0.5, 0,0,1}
   };
   const double inverses[][9] = {
     {1,0,0, 0,1,0, 0,0,1},
     {0.5,0,0, 0,2,0, 0,0,1.0/3},
     {0,1,0, -1,0,0, 0,0,1},
-    {1,-2,1, 0,1,-0.5, 0,0,1},
-    {0,1,-2.0/3, -0.5,0,0, 0,0,4.0/3}
+    {1,-2,1, 0,1,-0.5, 0,0,1}
   };
   for (int transform = 0; transform < 5; ++transform) {
-    auto &map = grid->mMap;
-    for (int i = 0; i < 9; ++i) {
-      map.mMatF[i] = float(map.mMatD[i] = matrices[transform][i]);
-      map.mInvMatF[i] = float(map.mInvMatD[i] = inverses[transform][i]);
-    }
-    for (int i = 0; i < 3; ++i)
-      map.mVecF[i] = float(map.mVecD[i] = 7.25 - 3.5*i);
-    nanovdb::Vec3dBBox world;
-    for (int corner = 0; corner < 8; ++corner) {
-      nanovdb::Vec3d p;
-      for (int i = 0; i < 3; ++i)
-        p[i] = corner & (1 << i) ? double(grid->indexBBox().max()[i])+1 : grid->indexBBox().min()[i];
-      world.expand(grid->indexToWorld(p));
-    }
-    barney_nanovdb::validateMap(map);
+    const nanovdb::Vec3d translation(7.25,3.75,.25);
+    if (transform == 4)
+      nanovdb_test::setComposedAffine(*grid, translation);
+    else
+      nanovdb_test::setAffine(*grid, matrices[transform], inverses[transform], translation);
+    const auto world = grid->worldBBox();
+    barney_nanovdb::validateMap(grid->map());
     for (int cell = 0; cell < dims[0]; ++cell) {
       auto lo = world.min(), hi = world.max();
       lo[0] = world.min()[0] + cell * (world.max()[0]-world.min()[0])/dims[0];
@@ -161,4 +152,23 @@ int main()
       throw std::runtime_error("float-rounded index bound must not sample outside the grid");
   }
   std::puts("PASS: small grid at an origin beyond exact float integers");
+
+  for (int minX : {5, 4}) {
+    auto extreme = nanovdb_test::extremeAffineGrid(minX);
+    auto *extremeGrid = extreme.grid<float>();
+    barney_nanovdb::validateMap(extremeGrid->map());
+    sampler.nvdbGrid = extremeGrid;
+    sampler.indexBounds = box3i(vec3i(minX,0,0), vec3i(5,1,1));
+    const auto extremeRange = barney_nanovdb::scalarRange(*extremeGrid, extremeGrid->worldBBox());
+    for (auto filter : {BN_TEXTURE_LINEAR, BN_TEXTURE_NEAREST}) {
+      sampler.filterMode = filter;
+      // x=2.25e38 maps to centered index 4.75, not the upper boundary.
+      const float value = sampler.sample(vec3f(2.25e38f,0.75f,0.75f));
+      const float expected = filter == BN_TEXTURE_NEAREST ? 10.f : minX == 5 ? 25.f : 20.f;
+      if (!std::isfinite(value) || std::abs(value - expected) > 1e-4f
+          || value < extremeRange.lower || value > extremeRange.upper)
+        throw std::runtime_error("finite extreme affine sampling and conservative range");
+    }
+  }
+  std::puts("PASS: extreme finite affine inverse overflow retains correct samples");
 }

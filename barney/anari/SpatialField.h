@@ -167,6 +167,7 @@ namespace BARNEY_NS {
       bool isValid() const override;
 
       bool isEmpty() const override { return m_empty; }
+      void invalidate(const char *reason);
 
       bool m_valid{false};
       bool m_empty{true};

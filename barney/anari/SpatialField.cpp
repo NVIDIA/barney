@@ -295,9 +295,16 @@ namespace BARNEY_NS {
       m_valid = true;
     }
     catch (const std::exception &e) {
+      invalidate(e.what());
+    }
+
+    void NanoVDBSpatialField::invalidate(const char *reason)
+    {
+      m_valid = false;
+      m_empty = true;
       cleanup();
       m_bounds.invalidate();
-      reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB update failed: %s", e.what());
+      reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB update failed: %s", reason);
     }
 
     BNScalarField NanoVDBSpatialField::createBarneyScalarField() const

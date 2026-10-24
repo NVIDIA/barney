@@ -103,7 +103,22 @@ namespace BARNEY_NS {
         m_densityScale = 1.f / m_unitDistance;
 
       m_bounds = m_field->bounds();
-      setBarneyParameters();
+      if (auto *field = dynamic_cast<NanoVDBSpatialField *>(m_field.get())) {
+        try {
+          // Prepare all dependent storage during finalization, before any
+          // group can publish geometry from this shared field.
+          if (!m_bnVolume)
+            getBarneyVolume();
+          else
+            setBarneyParameters();
+        } catch (const std::exception &e) {
+          cleanup();
+          field->invalidate(e.what());
+          m_bounds.invalidate();
+        }
+      } else {
+        setBarneyParameters();
+      }
     }
 
     BNVolume FieldMappedVolume::createBarneyVolume()
@@ -400,17 +415,7 @@ namespace BARNEY_NS {
 
       rebuildRGBAMapFromTransferFunction();
       rebuildEmissionMap();
-
-      if (m_unitDistance <= 0.f) {
-        reportMessage(ANARI_SEVERITY_WARNING,
-                      "invalid density scale calculated from 'unitDistance',"
-                      " setting to 1");
-        m_densityScale = 1.f;
-      } else
-        m_densityScale = 1.f / m_unitDistance;
-
-      m_bounds = m_field->bounds();
-      setBarneyParameters();
+      finalizeFieldMappedVolume();
     }
 
   }

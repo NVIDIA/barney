@@ -144,12 +144,17 @@ namespace BARNEY_NS {
   
     VolumeAccel::SP NanoVDBData::createAccel(Volume *volume)
     {
+      // Allocation failures must reach adapter finalization, before any group
+      // can publish geometry from this shared field.
       switch (gridType) {
 #define CREATE_ACCEL(BuildType, Suffix, EnumName)                       \
         case nanovdb::GridType::EnumName: {                             \
           auto sampler = std::make_shared<NanoVDBDataSampler<BuildType>>(this); \
-          return std::make_shared<MCVolumeAccel<NanoVDBDataSampler<BuildType>>> \
+          auto accel = std::make_shared<MCVolumeAccel<NanoVDBDataSampler<BuildType>>> \
             (volume, createGeomType_NanoVDBMC_##Suffix, sampler);       \
+          accel->majorantsGrid = std::make_shared<MajorantsGrid>(getMCs()); \
+          accel->majorantsGrid->resize(mcGrid->dims);                  \
+          return accel;                                              \
         }
         BARNEY_NANOVDB_FLOAT_TYPES(CREATE_ACCEL)
 #undef CREATE_ACCEL

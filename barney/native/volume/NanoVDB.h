@@ -100,10 +100,23 @@ namespace BARNEY_NS {
       // a world position to the voxel's lower-left corner index. We subtract 0.5
       // to shift into voxel-center index coordinates for correct trilinear
       // sampling. This matches the workaround in VisRTX for cell-centered NanoVDB.
-      auto indexPos = nvdbGrid->worldToIndexF(nvdbLoc);
-      indexPos[0] -= 0.5;
-      indexPos[1] -= 0.5;
-      indexPos[2] -= 0.5;
+      const auto mapped = nvdbGrid->worldToIndexF(nvdbLoc);
+      nanovdb::Vec3d indexPos(mapped[0], mapped[1], mapped[2]);
+      for (int axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(indexPos[axis])) {
+          // Finite float maps/positions can overflow in the subtraction or
+          // dot product (including 0*inf). Widen the same stored coefficients,
+          // not a different inverse, before any arithmetic or integer cast.
+          const auto &map = nvdbGrid->map();
+          const double x = double(P.x) - map.mVecF[0];
+          const double y = double(P.y) - map.mVecF[1];
+          const double z = double(P.z) - map.mVecF[2];
+          const auto *m = map.mInvMatF + 3*axis;
+          indexPos[axis] = double(m[0])*x + (double(m[1])*y + double(m[2])*z) - 0.5;
+        } else {
+          indexPos[axis] = mapped[axis] - 0.5f;
+        }
+      }
 
       // Clamp to the valid voxel range so boundary rays extrapolate the outermost
       // voxel value rather than blending with the background (inactive) value.

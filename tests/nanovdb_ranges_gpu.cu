@@ -3,6 +3,7 @@
 #include "native/volume/NanoVDB.h"
 #include "native/volume/NanoVDBHelpers.h"
 #include "nanovdb_majorants.h"
+#include "nanovdb_fixtures.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cuda_runtime.h>
 #include <cstdio>
@@ -112,20 +113,8 @@ static void checkType()
     if (grid->tree().isActive(nanovdb::Coord(-18,2,-3)))
       throw std::runtime_error("inactive fixture lost its mask");
     for (int affine = 0; affine < 2; ++affine) {
-      if (affine) {
-        const double matrix[9] = {0,-2,0, 1,0,0.5, 0,0,0.75};
-        const double inverse[9] = {0,1,-2.0/3, -0.5,0,0, 0,0,4.0/3};
-        for (int i = 0; i < 9; ++i) {
-          grid->mMap.mMatF[i] = float(grid->mMap.mMatD[i] = matrix[i]);
-          grid->mMap.mInvMatF[i] = float(grid->mMap.mInvMatD[i] = inverse[i]);
-        }
-        grid->mMap.mVecF[0] = float(grid->mMap.mVecD[0] = 7.25);
-        nanovdb::Vec3dBBox world;
-        for (int corner = 0; corner < 8; ++corner)
-          world.expand(grid->indexToWorld(nanovdb::Vec3d(corner & 1 ? 110 : -19,
-              corner & 2 ? 67 : 2, corner & 4 ? 62 : -3)));
-        grid->mWorldBBox = world;
-      }
+      if (affine)
+        nanovdb_test::setComposedAffine(*grid);
       nanovdb::NanoGrid<BuildT> *deviceGrid;
       int *failures;
       check(cudaMalloc(&deviceGrid, handle.size()));
@@ -145,8 +134,47 @@ static void checkType()
   }
 }
 
+__global__ void checkExtreme(nanovdb::NanoGrid<float> *grid, int *failures)
+{
+#if RTC_DEVICE_CODE
+  NanoVDBDataSampler<float>::DD sampler;
+  sampler.nvdbGrid = grid;
+  const int minX = grid->indexBBox().min()[0];
+  sampler.indexBounds = box3i(vec3i(minX,0,0), vec3i(5,1,1));
+  const auto range = barney_nanovdb::scalarRange(*grid, grid->worldBBox());
+  for (int mode = 0; mode < 2; ++mode) {
+    sampler.filterMode = mode ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
+    const float value = sampler.sample(vec3f(2.25e38f,.75f,.75f));
+    const float expected = mode ? 10.f : minX == 5 ? 25.f : 20.f;
+    if (!isfinite(value) || fabsf(value - expected) > 1e-4f
+        || value < range.lower || value > range.upper)
+      atomicAdd(failures, 1);
+  }
+#endif
+}
+
+static void checkExtremeAffine(int minX)
+{
+  auto handle = nanovdb_test::extremeAffineGrid(minX);
+  nanovdb::NanoGrid<float> *grid;
+  int *failures;
+  check(cudaMalloc(&grid, handle.size()));
+  check(cudaMallocManaged(&failures, sizeof(int)));
+  *failures = 0;
+  check(cudaMemcpy(grid, handle.data(), handle.size(), cudaMemcpyHostToDevice));
+  checkExtreme<<<1,1>>>(grid, failures);
+  check(cudaGetLastError());
+  check(cudaDeviceSynchronize());
+  if (*failures) throw std::runtime_error("GPU extreme affine sampling/range");
+  check(cudaFree(grid));
+  check(cudaFree(failures));
+  std::puts("PASS: GPU extreme finite affine inverse overflow");
+}
+
 int main()
 {
+  checkExtremeAffine(5);
+  checkExtremeAffine(4);
   checkType<float>();
   checkType<nanovdb::Fp4>();
   checkType<nanovdb::Fp8>();

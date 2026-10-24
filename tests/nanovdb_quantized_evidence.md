@@ -177,9 +177,13 @@ bash tests/test_image_region.sh
 bash tests/test_to_string_datatype.sh
 ```
 
-All above checks passed. C++ clients retain warning-as-error compilation except
-the existing bundled-builder workaround. Repository `just build` confirmed this
-workspace's source/build/install paths and successful `lib` cleanup.
+All above checks passed. The ANARI ingestion client uses
+`-Wall -Wextra -Werror -Wno-template-body`. The CPU numerical runner uses
+`-O2 -Wno-template-body` without `-Werror`; the CUDA numerical runner uses
+`-O2 -Xcompiler=-Wno-template-body` without host or device warning-as-error
+flags. Thus the numerical runs are not warning-as-error evidence. Repository
+`just build` confirmed this workspace's source/build/install paths and successful
+`lib` cleanup. (Corrected during ticket 12's final review.)
 
 ## Explicit remaining limits
 

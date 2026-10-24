@@ -1,5 +1,9 @@
 # NanoVDB regression tests
 
+[Final review evidence (ticket 12)](nanovdb_review_evidence.md) records the
+majorant-allocation lifecycle fix, extreme finite affine sampling regressions,
+current verification, and human-only DCO submission requirement.
+
 Supported grid types are **Float, Fp4, Fp8, Fp16 and FpN**. Ticket 06's
 [quantized acceptance evidence](nanovdb_quantized_evidence.md) records typed
 CPU/OptiX/native-CUDA ingestion, sampling, ranges, rendering and update checks.
@@ -82,7 +86,12 @@ safe-rejection boundary.
 
 Each NanoVDB finalize drops the adapter's old native field. A successful update
 creates a new one; dependent volumes detect the changed native binding and
-recreate their acceleration. Invalid and empty fields are excluded from groups.
+recreate their acceleration. NanoVDB volumes now prepare their majorant storage
+during finalization, before any group is built. A dependent allocation failure
+invalidates the shared field, so even a previously prepared sibling volume is
+excluded. Majorant buffers allocate replacements before releasing old ownership;
+construction no longer allocates an unneeded placeholder buffer.
+Invalid and empty fields are excluded from groups.
 This intentionally avoids keeping stale shared macrocell data or volume-specific
 majorants alive as the current scene. Normal array-unmap notifications use the
 same path, without an unrelated world/volume recommit.
@@ -112,6 +121,12 @@ it cannot interfere with sanitizer allocation interceptors. A fourth shared-volu
 case fails the CPU macrocell range-buffer allocation, checks that both volumes
 vanish, and compares recovery to a fresh scene. GPU runs explicitly skip these
 CPU/system-allocation hooks; device allocator failure is not claimed tested.
+Two further cases fail each dependent volume's majorants in turn after the
+65-cell field's range allocation succeeds (544 aligned bytes for ranges versus
+288 for each majorant buffer). They require an ANARI error, invalid field,
+sphere-only bounds/image and recovery against fresh volumes. Allocation sizes
+and skipped matches select the system failure site; they are not renderer API
+contracts.
 
 ## Data and independent transfer-function updates
 
@@ -293,7 +308,19 @@ allocates a replacement before freeing its old buffer, permitting exception-safe
 cleanup. Scalar ranges remain shared; transfer-function majorants remain per
 volume. Integer bounds are compared before the sampler's float-to-int
 conversion, preventing float-rounded large origins from fetching outside the
-clamped grid.
+clamped grid. If the float inverse map overflows for a finite position, sampling
+recomputes the affected component in double using the same stored float
+coefficients before centering/clamping or integer conversion. Finite float
+inputs/coefficient products fit double; no determinant threshold is introduced.
+The existing outward-rounded intervals enclose this widened evaluation too,
+falling back to full-axis ranges for nonfinite interval intermediates.
+
+`nanovdb_fixtures.h` centralizes only host affine header/bounds setup (including
+the shared composed transform); independent sampling and range oracles remain
+in their respective CPU/CUDA tests. Extreme fixtures use x'=1e38*x-3e38 with
+index x=5 (world x in [2e38,3e38]) and x=4..5 (world x in [1e38,3e38]). Both
+filters must return finite, independently worked values; the second fixture
+also checks interior x interpolation rather than merely clamping overflow.
 
 ## Numerical and GPU checks
 
