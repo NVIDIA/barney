@@ -97,6 +97,58 @@ case fails the CPU macrocell range-buffer allocation, checks that both volumes
 vanish, and compares recovery to a fresh scene. GPU runs explicitly skip these
 CPU/system-allocation hooks; device allocator failure is not claimed tested.
 
+## Data and independent transfer-function updates
+
+`checkDataUpdates` starts with a 4x4x35 grid (three macrocells along z,
+values 0.1–0.3), replaces it with a differently sized byte array containing a
+2x3x18 grid at index origin (1,1,0) (two macrocells along z, values 0.6–0.9),
+then edits that managed array in place to values 0.05–0.2. The in-place fixtures
+have identical byte lengths and topology. Only `anariUnmapArray` notifies the
+last update: no field, volume or world recommit is used. Each transition is
+compared against fresh final scenes, jointly first and then per volume, with
+world bounds compared too. Both transitions must change the joint image by
+more than 0.01, preventing an ignored update from passing by coincidence.
+
+`checkTransferFunctionUpdates` uses two volumes sharing a ramp field. It first
+unmaps only volume 0's managed opacity array, increasing its interior peaks
+from [0,0.05,0,0.1,0] to [0,0.9,0,0.7,0]. It then replaces only volume 1's
+opacity array, decreasing [0.1,0,0.4,0,0.1] to [0.01,0,0.02,0,0.01]. Each
+update is consumed with both volumes in the very next frame, without committing
+the field, world or other volume. Joint and individual images must agree with
+fresh scenes; the joint before/after difference must exceed 0.01. There is no
+assertion that pixels for one volume stay unchanged during joint transport.
+The existing 64 spp, fresh-frame reset, disabled denoiser and 0.005 mean-RGBA
+tolerance apply. The original invalid/empty/recovery and filter-only matrix
+remains intact.
+
+`nanovdb_majorants.h` extends the existing production numerical seam on CPU
+and CUDA. Two independent non-monotonic `TransferFunction::DD` instances map
+production reconstructed samples at affine-cell interiors, faces, edges and
+corners; each density must be bounded by its own production majorant over the
+shared scalar range (1e-6 absolute float tolerance). Updating only the first
+map's peaks tests both maps again. Independently worked full-domain, partial
+segment and clamped endpoint checks prevent an endpoint-only maximum from
+passing: the updated first full majorant is 1.8, the second is 1.2, and their
+[0.1,0.2] maxima are 1.44 and 0.18 with density scales 2 and 3.
+
+Ticket 04 required no production change: existing field replacement/rebinding
+and per-volume majorant ownership satisfy these tests. Sensitivity experiments
+were temporary and reverted: ignoring subsequent native `setXF` calls makes
+the API test fail at the first TF update; omitting interior TF knots makes the
+numerical test fail. Disabling only `setXF`'s dirty flag did **not** fail: the
+ANARI path also sets `principledVolume` (marking majorants dirty) and performs
+structural builds. The tests intentionally assert observables, not a particular
+invalidation path or rebuild count.
+
+Verified on CPU/Embree and one RTX 5880 Ada OptiX device: 136 and 121 API
+checkpoints respectively; all 12 new updated/fresh image comparisons had mean
+RGBA error below 1e-9. Six CPU numerical groups and all four CUDA map/statistics
+combinations pass, including non-monotonic majorants. CUDA standalone memcheck
+reports zero errors. UBSan-only and ASan+UBSan API runs each pass 121 checkpoints
+with the existing ticket 08 suppressions; numerical sanitizer runs are
+unsuppressed. The sanitizer/backend qualifications below still apply, notably
+no passing full OptiX Compute Sanitizer claim (ticket 09).
+
 ## Nearest and linear filtering
 
 The ANARI `filter` parameter matches exact, case-sensitive `nearest` and

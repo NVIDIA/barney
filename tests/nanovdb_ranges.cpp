@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "native/volume/NanoVDB.h"
 #include "native/volume/NanoVDBHelpers.h"
+#include "nanovdb_majorants.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cstdio>
 #include <stdexcept>
@@ -102,6 +103,8 @@ int main()
               const float value = sampler.sample(p);
               if (value < local.lower || value > local.upper)
                 throw std::runtime_error("affine local range underbounds production sample");
+              if (!conservativeMajorants(range1f(local.lower, local.upper), value))
+                throw std::runtime_error("non-monotonic TF majorant underbounds density");
             }
           }
     }
@@ -109,7 +112,7 @@ int main()
   // A finite invertible map must not be rejected by a determinant epsilon.
   nanovdb::Map tiny(1e-12);
   barney_nanovdb::validateMap(tiny);
-  std::puts("PASS: inactive values, translated/scaled/rotated/sheared coverage");
+  std::puts("PASS: inactive values, affine ranges and independent non-monotonic majorants");
   nanovdb::tools::build::Grid<float> rampSource(99.f);
   auto rampAccessor = rampSource.getAccessor();
   for (int x = -19; x <= 15; ++x)

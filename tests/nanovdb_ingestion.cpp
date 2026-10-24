@@ -278,6 +278,132 @@ static double difference(const std::vector<float> &a, const std::vector<float> &
   return error / a.size();
 }
 
+static ANARIArray1D setOpacity(RenderScene &s, int volume, const float *values)
+{
+  auto array = anariNewArray1D(s.device, nullptr, nullptr, nullptr, ANARI_FLOAT32, 5);
+  std::memcpy(anariMapArray(s.device, array), values, 5*sizeof(float));
+  anariUnmapArray(s.device, array);
+  anariSetParameter(s.device, s.volumeHandles[volume], "opacity", ANARI_ARRAY1D, &array);
+  anariCommitParameters(s.device, s.volumeHandles[volume]);
+  return array;
+}
+
+static void checkTransferFunctionUpdates()
+{
+  nanovdb::tools::build::Grid<float> source(0.f);
+  auto accessor = source.getAccessor();
+  for (int z = 0; z < 4; ++z)
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        accessor.setValue(nanovdb::Coord(x,y,z), x/3.f);
+  auto handle = nanovdb::tools::createNanoGrid(source);
+  const float initial[2][5] = {{0,.05f,0,.1f,0}, {.1f,0,.4f,0,.1f}};
+  const float final[2][5] = {{0,.9f,0,.7f,0}, {.01f,0,.02f,0,.01f}};
+  RenderScene updated;
+  ANARIArray1D arrays[2];
+  for (int i = 0; i < 2; ++i) arrays[i] = setOpacity(updated, i, initial[i]);
+  updated.data(handle.data(), handle.size(), true, "independent non-monotonic transfer functions");
+  for (int target = 0; target < 2; ++target) {
+    updated.visible(1, 1);
+    const auto before = updated.render();
+    RenderScene fresh;
+    for (int i = 0; i < 2; ++i) {
+      auto array = setOpacity(fresh, i, i <= target ? final[i] : initial[i]);
+      anariRelease(fresh.device, array);
+    }
+    fresh.data(handle.data(), handle.size(), true, "fresh independent final transfer functions");
+    if (target == 0) {
+      std::memcpy(anariMapArray(updated.device, arrays[0]), final[0], sizeof(final[0]));
+      anariUnmapArray(updated.device, arrays[0]);
+    } else {
+      auto array = setOpacity(updated, 1, final[1]);
+      anariRelease(updated.device, array);
+    }
+    // First consume the TF-only update with both volumes in the same frame.
+    // No field, other-volume or world commit occurs before this render.
+    const auto after = updated.render();
+    if (difference(after, before) <= 0.01)
+      throw std::runtime_error("TF edit must visibly change joint transport");
+    for (int view = 0; view < 3; ++view) {
+      if (view) {
+        updated.visible(view != 2, view != 1);
+        fresh.visible(view != 2, view != 1);
+      }
+      const double delta = difference(view ? updated.render() : after, fresh.render());
+      std::printf("TF target=%d view=%d fresh delta=%g\n", target, view, delta);
+      if (delta > 0.005) throw std::runtime_error("independent TF update differs from fresh");
+    }
+    std::printf("PASS: volume %d TF-only update, joint and individual fresh scenes\n", target);
+  }
+  for (auto array : arrays) anariRelease(updated.device, array);
+}
+
+static void checkDataUpdates()
+{
+  nanovdb::tools::build::Grid<float> initialSource(0.f), finalSource(0.f), editedSource(0.f);
+  for (int z = 0; z < 35; ++z)
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x)
+        initialSource.getAccessor().setValue(nanovdb::Coord(x,y,z), z < 16 ? 0.1f : 0.3f);
+  for (int z = 0; z < 18; ++z)
+    for (int y = 1; y < 4; ++y)
+      for (int x = 1; x < 3; ++x) {
+        finalSource.getAccessor().setValue(nanovdb::Coord(x,y,z), z < 8 ? 0.6f : 0.9f);
+        editedSource.getAccessor().setValue(nanovdb::Coord(x,y,z), z < 8 ? 0.05f : 0.2f);
+      }
+  auto initial = nanovdb::tools::createNanoGrid(initialSource);
+  auto final = nanovdb::tools::createNanoGrid(finalSource);
+  auto edited = nanovdb::tools::createNanoGrid(editedSource);
+  if (initial.size() == final.size() || final.size() != edited.size())
+    throw std::runtime_error("replacement/in-place fixture sizes");
+  RenderScene updated, freshFinal, freshEdited;
+  for (auto *s : {&updated, &freshFinal, &freshEdited}) {
+    const float eye[3] = {0.f, 2.f, 50.f};
+    anariSetParameter(s->device, s->camera, "position", ANARI_FLOAT32_VEC3, eye);
+    anariCommitParameters(s->device, s->camera);
+  }
+  updated.data(initial.data(), initial.size(), true, "multi-cell initial field");
+  const auto before = updated.render();
+  freshFinal.data(final.data(), final.size(), true, "fresh changed extent/extrema");
+  freshEdited.data(edited.data(), edited.size(), true, "fresh changed content");
+  auto compare = [&](RenderScene &fresh, const char *label) {
+    // Joint render first: no dependent volume/world recommit can hide a missed update.
+    for (int view = 0; view < 3; ++view) {
+      if (view) updated.visible(view != 2, view != 1);
+      fresh.visible(view != 2, view != 1);
+      const double delta = difference(updated.render(), fresh.render());
+      std::printf("%s view=%d delta=%g\n", label, view, delta);
+      if (delta > 0.005) throw std::runtime_error(label);
+    }
+    float actual[6], expected[6];
+    anariGetProperty(updated.device, updated.world, "bounds", ANARI_FLOAT32_BOX3,
+        actual, sizeof(actual), ANARI_WAIT);
+    anariGetProperty(fresh.device, fresh.world, "bounds", ANARI_FLOAT32_BOX3,
+        expected, sizeof(expected), ANARI_WAIT);
+    for (int i = 0; i < 6; ++i)
+      if (std::abs(actual[i]-expected[i]) > 1e-5f) throw std::runtime_error("updated bounds");
+    std::printf("PASS: %s, bounds and both dependent volumes\n", label);
+  };
+  auto bytes = anariNewArray1D(updated.device, nullptr, nullptr, nullptr, ANARI_UINT8, final.size());
+  std::memcpy(anariMapArray(updated.device, bytes), final.data(), final.size());
+  anariUnmapArray(updated.device, bytes);
+  anariSetParameter(updated.device, updated.field, "data", ANARI_ARRAY1D, &bytes);
+  anariCommitParameters(updated.device, updated.field);
+  if (difference(before, freshFinal.render()) <= 0.01)
+    throw std::runtime_error("replacement must change the image");
+  compare(freshFinal, "replacement changes bounds, dimensions and extrema");
+  updated.visible(1, 1);
+  updated.render();
+  std::memcpy(anariMapArray(updated.device, bytes), edited.data(), edited.size());
+  anariUnmapArray(updated.device, bytes);
+  // Neither field nor either volume is recommitted after unmap.
+  freshFinal.visible(1, 1);
+  if (difference(freshFinal.render(), freshEdited.render()) <= 0.01)
+    throw std::runtime_error("in-place edit must change the image");
+  compare(freshEdited, "array unmap refreshes multi-cell sampling and majorants");
+  anariRelease(updated.device, bytes);
+}
+
 static void checkFilterUpdates()
 {
   // The first macrocell ends at z=35/3: nearest reaches index 11, but
@@ -359,6 +485,8 @@ static void checkFilterUpdates()
 int main()
 {
   std::setvbuf(stdout, nullptr, _IONBF, 0);
+  checkTransferFunctionUpdates();
+  checkDataUpdates();
   checkFilterUpdates();
   Scene scene;
   scene.check(false, "missing data");

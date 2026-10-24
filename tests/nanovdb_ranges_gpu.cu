@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "native/volume/NanoVDB.h"
 #include "native/volume/NanoVDBHelpers.h"
+#include "nanovdb_majorants.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cuda_runtime.h>
 #include <cstdio>
@@ -64,7 +65,8 @@ __global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
           sampler.filterMode = mode ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
           const float value = sampler.sample(vec3f(float(lo[0]+(hi[0]-lo[0])*x/4),
               float(lo[1]+(hi[1]-lo[1])*y/4), float(lo[2]+(hi[2]-lo[2])*z/4)));
-          if (!isfinite(value) || value < range.lower || value > range.upper)
+          if (!isfinite(value) || value < range.lower || value > range.upper
+              || !conservativeMajorants(range1f(range.lower, range.upper), value))
             atomicAdd(failures, 1);
         }
       }
@@ -121,7 +123,7 @@ int main()
       if (*failures) throw std::runtime_error("GPU local ranges underbound production samples");
       check(cudaFree(deviceGrid));
       check(cudaFree(failures));
-      std::printf("PASS: GPU ranges/samples: %d cells, stats=%d affine=%d\n", count, int(stats), affine);
+      std::printf("PASS: GPU ranges/samples/non-monotonic majorants: %d cells, stats=%d affine=%d\n", count, int(stats), affine);
     }
   }
 }
