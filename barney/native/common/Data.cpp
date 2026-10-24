@@ -271,6 +271,8 @@ namespace BARNEY_NS {
       this->numBytes = count*owlSizeOf(type);
       for (auto device : *devices) {
         getPLD(device)->rtcBuffer->resize(count*owlSizeOf(type));
+        if (numBytes && !getPLD(device)->rtcBuffer->getDD())
+          throw std::bad_alloc();
         getPLD(device)->rtcBuffer->upload(_items,count*owlSizeOf(type));
       }
     }

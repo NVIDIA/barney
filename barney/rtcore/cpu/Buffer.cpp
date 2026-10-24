@@ -3,15 +3,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "rtcore/cpu/Buffer.h"
+#include <cstdlib>
+#include <limits>
+#include <new>
 
 namespace BARNEY_NS {
   namespace rtc {
+
+    static void *allocateBuffer(size_t numBytes)
+    {
+      if (!numBytes) return nullptr;
+      // NanoVDB grids require 32-byte alignment, including on the CPU backend.
+      constexpr size_t alignment = 32;
+      if (numBytes > std::numeric_limits<size_t>::max() - (alignment - 1))
+        throw std::bad_alloc();
+      const size_t padded = (numBytes + alignment - 1) & ~(alignment - 1);
+      void *mem = std::aligned_alloc(alignment, padded);
+      if (!mem) throw std::bad_alloc();
+      return mem;
+    }
 
     Buffer::Buffer(Device *device,
                    size_t numBytes,
                    const void *initMem)
     {
-      mem = numBytes?malloc(numBytes):nullptr;
+      mem = allocateBuffer(numBytes);
       if (initMem)
         memcpy(mem,initMem,numBytes);
     }
@@ -23,8 +39,9 @@ namespace BARNEY_NS {
 
     void Buffer::resize(size_t numBytes)
     {
+      void *newMem = allocateBuffer(numBytes);
       if (mem) free(mem);
-      mem = numBytes?malloc(numBytes):nullptr;
+      mem = newMem;
     }
     
     void *Buffer::getDD() const

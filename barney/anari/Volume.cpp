@@ -71,7 +71,7 @@ namespace BARNEY_NS {
 
     bool FieldMappedVolume::isValid() const
     {
-      return m_field && m_field->isValid();
+      return m_field && m_field->isValid() && !m_field->isEmpty();
     }
 
     void FieldMappedVolume::commitParameters()
@@ -87,6 +87,7 @@ namespace BARNEY_NS {
 
     void FieldMappedVolume::finalizeFieldMappedVolume()
     {
+      invalidateBarneyVolumeIfFieldChanged();
       if (!m_field) {
         reportMessage(ANARI_SEVERITY_WARNING,
                       "no spatial field provided to volume");
@@ -114,8 +115,10 @@ namespace BARNEY_NS {
         ? bnVolumeCreate(context, slot, m_field->getBarneyScalarField())
         : BNVolume{};
 
-      if (volume)
+      if (volume) {
         m_boundField = m_field.get();
+        m_boundNativeField = m_field->getBarneyScalarField();
+      }
 
       return volume;
     }
@@ -145,11 +148,14 @@ namespace BARNEY_NS {
     void FieldMappedVolume::invalidateBarneyVolumeIfFieldChanged()
     {
       const SpatialField *newField = m_field.get();
-      if (m_boundField == newField)
+      const BNScalarField newNativeField = isValid()
+        ? m_field->m_bnField : nullptr;
+      if (m_boundField == newField && m_boundNativeField == newNativeField)
         return;
 
       cleanup();
       m_boundField = nullptr;
+      m_boundNativeField = nullptr;
     }
 
     // TransferFunction1D ///////////////////////////////////////////////////////////

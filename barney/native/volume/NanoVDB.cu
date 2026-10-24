@@ -171,10 +171,12 @@ namespace BARNEY_NS {
       data->download(dev0,nvHostBuffer.data());
     
       auto gridHandle = nanovdb::GridHandle<>(std::move(nvHostBuffer));
-      const nanovdb::GridMetaData *gridMetadata = gridHandle.gridMetaData();
       const auto *floatGrid = gridHandle.grid<float>();
       if (!floatGrid)
         throw std::runtime_error("barney::NanoVDBData: expected Float grid");
+      // GridMetaData pointer casts require the root immediately after the tree.
+      const nanovdb::GridMetaData metadata(*floatGrid);
+      const auto *gridMetadata = &metadata;
       valueRange = {floatGrid->tree().root().minimum(),
                     floatGrid->tree().root().maximum()};
       auto boundsMin = gridMetadata->worldBBox().min();

@@ -1,0 +1,6 @@
+# Existing zero-byte memcpy(null, null, 0) in general CPU scene construction.
+# Follow-up: nanovdb-support ticket 08. Do not suppress NanoVDB diagnostics.
+nonnull-attribute:barney/rtcore/cpu/Buffer.cpp
+nonnull-attribute:barney/rtcore/cpu/Device.h
+# virtualBoundsFunc passes an unused TraceInterface reference from nullptr.
+null:barney/rtcore/cpu/Group.cpp

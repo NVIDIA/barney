@@ -44,6 +44,7 @@ namespace BARNEY_NS {
       }
 
       virtual box3 bounds() const = 0;
+      virtual bool isEmpty() const { return false; }
 
       BNScalarField m_bnField = 0;
     };
@@ -165,6 +166,10 @@ namespace BARNEY_NS {
       box3 bounds() const override;
       bool isValid() const override;
 
+      bool isEmpty() const override { return m_empty; }
+
+      bool m_valid{false};
+      bool m_empty{true};
       std::string m_filter;
       helium::ChangeObserverPtr<helium::Array1D> m_data;
 

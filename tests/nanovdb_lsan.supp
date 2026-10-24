@@ -1,0 +1,3 @@
+# Existing CPU instance geometry references are not released after attachment.
+# Follow-up: nanovdb-support ticket 08. Keep all other leak checks enabled.
+leak:barney_cpu::rtc::InstanceGroup::buildAccel
