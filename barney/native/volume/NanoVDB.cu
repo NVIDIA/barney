@@ -91,9 +91,17 @@ namespace BARNEY_NS {
 
       for (auto device : *devices) {
         SetActiveGPU forDuration(device);
-        __rtc_launch(device->rtc, (NanoVDBData_computeMCs<float>),
-                     int((count + 127) / 128), 128,
-                     mcGrid->getDD(device), getDD(device));
+        switch (gridType) {
+#define BUILD_RANGES(BuildType, Suffix, EnumName)                       \
+          case nanovdb::GridType::EnumName:                             \
+            __rtc_launch(device->rtc, (NanoVDBData_computeMCs<BuildType>), \
+                         int((count + 127) / 128), 128,                 \
+                         mcGrid->getDD(device), getDD(device));         \
+            break;
+          BARNEY_NANOVDB_FLOAT_TYPES(BUILD_RANGES)
+#undef BUILD_RANGES
+          default: throw std::runtime_error("Unsupported NanoVDB grid type");
+        }
       }
       for (auto device : *devices)
         device->sync();
@@ -190,12 +198,21 @@ namespace BARNEY_NS {
       data->download(dev0,nvHostBuffer.data());
     
       auto gridHandle = nanovdb::GridHandle<>(std::move(nvHostBuffer));
-      const auto *floatGrid = gridHandle.grid<float>();
-      if (!floatGrid)
-        throw std::runtime_error("barney::NanoVDBData: expected Float grid");
-      barney_nanovdb::validateMap(floatGrid->map());
-      // GridMetaData pointer casts require the root immediately after the tree.
-      const nanovdb::GridMetaData metadata(*floatGrid);
+      // Typed metadata follows the tree's root offset, not a fixed pointer cast.
+      const nanovdb::GridMetaData metadata = [&]() {
+        switch (gridHandle.gridType()) {
+#define READ_METADATA(BuildType, Suffix, EnumName)                     \
+          case nanovdb::GridType::EnumName: {                           \
+            const auto *grid = gridHandle.grid<BuildType>();            \
+            if (!grid) throw std::runtime_error("Invalid NanoVDB grid"); \
+            barney_nanovdb::validateMap(grid->map());                   \
+            return nanovdb::GridMetaData(*grid);                       \
+          }
+          BARNEY_NANOVDB_FLOAT_TYPES(READ_METADATA)
+#undef READ_METADATA
+          default: throw std::runtime_error("Unsupported NanoVDB grid type");
+        }
+      }();
       const auto *gridMetadata = &metadata;
       auto boundsMin = gridMetadata->worldBBox().min();
       auto boundsMax = gridMetadata->worldBBox().max();

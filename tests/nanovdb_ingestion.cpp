@@ -290,6 +290,7 @@ static ANARIArray1D setOpacity(RenderScene &s, int volume, const float *values)
   return array;
 }
 
+template<typename BuildT = float>
 static void checkTransferFunctionUpdates()
 {
   nanovdb::tools::build::Grid<float> source(0.f);
@@ -298,7 +299,7 @@ static void checkTransferFunctionUpdates()
     for (int y = 0; y < 4; ++y)
       for (int x = 0; x < 4; ++x)
         accessor.setValue(nanovdb::Coord(x,y,z), x/3.f);
-  auto handle = nanovdb::tools::createNanoGrid(source);
+  auto handle = nanovdb::tools::createNanoGrid<decltype(source), BuildT>(source);
   const float initial[2][5] = {{0,.05f,0,.1f,0}, {.1f,0,.4f,0,.1f}};
   const float final[2][5] = {{0,.9f,0,.7f,0}, {.01f,0,.02f,0,.01f}};
   RenderScene updated;
@@ -340,6 +341,7 @@ static void checkTransferFunctionUpdates()
   for (auto array : arrays) anariRelease(updated.device, array);
 }
 
+template<typename BuildT = float>
 static void checkDataUpdates()
 {
   nanovdb::tools::build::Grid<float> initialSource(0.f), finalSource(0.f), editedSource(0.f);
@@ -354,8 +356,8 @@ static void checkDataUpdates()
         editedSource.getAccessor().setValue(nanovdb::Coord(x,y,z), z < 8 ? 0.05f : 0.2f);
       }
   auto initial = nanovdb::tools::createNanoGrid(initialSource);
-  auto final = nanovdb::tools::createNanoGrid(finalSource);
-  auto edited = nanovdb::tools::createNanoGrid(editedSource);
+  auto final = nanovdb::tools::createNanoGrid<decltype(finalSource), BuildT>(finalSource);
+  auto edited = nanovdb::tools::createNanoGrid<decltype(editedSource), BuildT>(editedSource);
   if (initial.size() == final.size() || final.size() != edited.size())
     throw std::runtime_error("replacement/in-place fixture sizes");
   RenderScene updated, freshFinal, freshEdited;
@@ -404,8 +406,31 @@ static void checkDataUpdates()
     throw std::runtime_error("in-place edit must change the image");
   compare(freshEdited, "array unmap refreshes multi-cell sampling and majorants");
   anariRelease(updated.device, bytes);
+  updated.visible(1, 1);
+  freshFinal.visible(1, 1);
+  updated.data(nullptr, 0, false, "replacement invalidates shared field");
+  RenderScene invalid;
+  invalid.data(nullptr, 0, false, "fresh invalid field");
+  if (difference(updated.render(), invalid.render()) > 0.005)
+    throw std::runtime_error("invalid replacement retains contribution");
+  float invalidBounds[6];
+  const float sphereBounds[6] = {-4,1,1,-2,3,3};
+  anariGetProperty(updated.device, updated.world, "bounds", ANARI_FLOAT32_BOX3,
+      invalidBounds, sizeof(invalidBounds), ANARI_WAIT);
+  for (int i = 0; i < 6; ++i)
+    if (std::abs(invalidBounds[i]-sphereBounds[i]) > 1e-5f)
+      throw std::runtime_error("typed invalid replacement retains old bounds");
+  updated.data(final.data(), final.size(), true, "recover typed field");
+  compare(freshFinal, "typed recovery");
+  updated.visible(1, 1);
+  auto floatFinal = nanovdb::tools::createNanoGrid(finalSource);
+  freshFinal.visible(1, 1);
+  freshFinal.data(floatFinal.data(), floatFinal.size(), true, "fresh Float replacement");
+  updated.data(floatFinal.data(), floatFinal.size(), true, "typed to Float replacement");
+  compare(freshFinal, "return to Float dispatch");
 }
 
+template<typename BuildT = float>
 static void checkFilterUpdates()
 {
   // The first macrocell ends at z=35/3: nearest reaches index 11, but
@@ -416,7 +441,7 @@ static void checkFilterUpdates()
     for (int y = 0; y < 4; ++y)
       for (int x = 0; x < 4; ++x)
         accessor.setValue(nanovdb::Coord(x,y,z), z == 12 ? 1.f : 0.f);
-  auto handle = nanovdb::tools::createNanoGrid(source);
+  auto handle = nanovdb::tools::createNanoGrid<decltype(source), BuildT>(source);
   RenderScene nearest, linear, omitted;
   for (auto *s : {&nearest, &linear, &omitted}) {
     const float eye[3] = {0.f, 2.f, 50.f};
@@ -435,9 +460,9 @@ static void checkFilterUpdates()
   }
   anariSetParameter(nearest.device, nearest.field, "filter", ANARI_STRING, "nearest");
   anariSetParameter(linear.device, linear.field, "filter", ANARI_STRING, "linear");
-  nearest.data(handle.data(), handle.size(), true, "nearest shared Float field");
-  linear.data(handle.data(), handle.size(), true, "linear shared Float field");
-  omitted.data(handle.data(), handle.size(), true, "default shared Float field");
+  nearest.data(handle.data(), handle.size(), true, "nearest shared typed field");
+  linear.data(handle.data(), handle.size(), true, "linear shared typed field");
+  omitted.data(handle.data(), handle.size(), true, "default shared typed field");
   if (difference(omitted.render(), linear.render()) > 0.005)
     throw std::runtime_error("omitted filter differs from explicit linear");
   const double delta = difference(nearest.render(), linear.render());
@@ -608,6 +633,39 @@ static void benchmarkSparse(int extent)
       builds.front(), builds[2], builds.back(), renders.front(), renders[2], renders.back());
 }
 
+template<typename BuildT>
+static void checkTypedEnvelope()
+{
+  nanovdb::tools::build::Grid<float> source(0.f);
+  source.getAccessor().setValue(nanovdb::Coord(-1,2,0), .3f);
+  source.getAccessor().setValue(nanovdb::Coord(2,3,2), .8f);
+  auto handle = nanovdb::tools::createNanoGrid<decltype(source), BuildT>(source);
+  Scene scene;
+  scene.data(handle.data(), handle.size(), true, "real quantized version 32 grid");
+  std::vector<unsigned char> bytes(handle.size()+33);
+  std::memcpy(bytes.data()+1, handle.data(), handle.size());
+  scene.data(bytes.data()+1, bytes.size()-1, true, "quantized unaligned padded input");
+  nanovdb::GridData header;
+  nanovdb::TreeData tree;
+  std::memcpy(&header, handle.data(), sizeof(header));
+  std::memcpy(&tree, static_cast<const char *>(handle.data())+sizeof(header), sizeof(tree));
+  const auto rootEnd = sizeof(header)+tree.mNodeOffset[3]
+      + sizeof(typename nanovdb::NanoGrid<BuildT>::TreeType::RootType);
+  std::printf("fixed envelope type=%d grid=%zu tree=%zu root=%zu\n",
+      int(header.mGridType), sizeof(header), sizeof(tree),
+      sizeof(typename nanovdb::NanoGrid<BuildT>::TreeType::RootType));
+  for (size_t size : {sizeof(header)-1, sizeof(header)+sizeof(tree)-1, size_t(rootEnd-1)}) {
+    std::memcpy(bytes.data(), handle.data(), size);
+    if (size >= sizeof(header)) {
+      auto truncated = header;
+      truncated.mGridSize = size;
+      std::memcpy(bytes.data(), &truncated, sizeof(truncated));
+    }
+    scene.data(bytes.data(), size, false, "quantized fixed envelope truncation");
+    scene.data(handle.data(), handle.size(), true, "quantized envelope recovery");
+  }
+}
+
 int main()
 {
   if (const char *extent = std::getenv("NANOVDB_BENCHMARK")) {
@@ -619,6 +677,17 @@ int main()
   checkTransferFunctionUpdates();
   checkDataUpdates();
   checkFilterUpdates();
+#define CHECK_QUANTIZED(T) \
+  std::puts("Testing " #T); \
+  checkTypedEnvelope<T>(); \
+  checkTransferFunctionUpdates<T>(); \
+  checkDataUpdates<T>(); \
+  checkFilterUpdates<T>();
+  CHECK_QUANTIZED(nanovdb::Fp4)
+  CHECK_QUANTIZED(nanovdb::Fp8)
+  CHECK_QUANTIZED(nanovdb::Fp16)
+  CHECK_QUANTIZED(nanovdb::FpN)
+#undef CHECK_QUANTIZED
   Scene scene;
   scene.check(false, "missing data");
   const unsigned char shortPayload[1] = {0};
@@ -640,16 +709,17 @@ int main()
       throw std::runtime_error("statistics must not affect rendering");
     std::puts("PASS: statistics-independent Float rendering");
   }
-  {
+  auto checkAffine = [](auto *type) {
+    using BuildT = std::remove_pointer_t<decltype(type)>;
     nanovdb::tools::build::Grid<float> affineSource(0.2f);
     auto a = affineSource.getAccessor();
     for (int z = 0; z < 4; ++z)
       for (int y = 0; y < 4; ++y)
         for (int x = 0; x < 35; ++x)
           a.setValue(nanovdb::Coord(x,y,z), x < 17 ? 0.2f : 1.f);
-    auto original = nanovdb::tools::createNanoGrid(affineSource);
-    auto mapped = nanovdb::tools::createNanoGrid(affineSource, nanovdb::tools::StatsMode::BBox);
-    auto *g = mapped.grid<float>();
+    auto original = nanovdb::tools::createNanoGrid<decltype(affineSource), BuildT>(affineSource);
+    auto mapped = nanovdb::tools::createNanoGrid<decltype(affineSource), BuildT>(affineSource, nanovdb::tools::StatsMode::BBox);
+    auto *g = mapped.template grid<BuildT>();
     const double matrix[9] = {0,-0.5,0, 0.1,0,0.15, 0,0,0.5};
     const double inverse[9] = {0,10,-3, -2,0,0, 0,0,2};
     for (int i = 0; i < 9; ++i) {
@@ -663,7 +733,7 @@ int main()
           corner & 1 ? 35 : 0, corner & 2 ? 4 : 0, corner & 4 ? 4 : 0)));
     g->mWorldBBox = world;
     g->mVoxelSize = nanovdb::Vec3d(0.1, 0.5, std::sqrt(0.15*0.15+0.5*0.5));
-    auto *unreflected = original.grid<float>();
+    auto *unreflected = original.template grid<BuildT>();
     unreflected->mMap = g->mMap;
     unreflected->mWorldBBox = g->mWorldBBox;
     unreflected->mVoxelSize = g->mVoxelSize;
@@ -694,8 +764,13 @@ int main()
     anariGetProperty(instanced.device, instanced.world, "bounds", ANARI_FLOAT32_BOX3, c, sizeof(c), ANARI_WAIT);
     for (int i = 0; i < 6; ++i)
       if (std::abs(b[i]-c[i]) > 1e-5f) throw std::runtime_error("header/instance affine bounds mismatch");
-    std::puts("PASS: affine Float rendering and ANARI instance composition");
-  }
+    std::printf("PASS: affine rendering and ANARI instance composition type=%d\n", int(g->gridType()));
+  };
+  checkAffine(static_cast<float *>(nullptr));
+  checkAffine(static_cast<nanovdb::Fp4 *>(nullptr));
+  checkAffine(static_cast<nanovdb::Fp8 *>(nullptr));
+  checkAffine(static_cast<nanovdb::Fp16 *>(nullptr));
+  checkAffine(static_cast<nanovdb::FpN *>(nullptr));
   const auto *raw = static_cast<const unsigned char *>(handle.data());
   std::vector<unsigned char> bad(raw, raw + handle.size());
   nanovdb::GridData header;
@@ -824,7 +899,7 @@ int main()
     scene.data(bad.data(), bad.size(), false, "invalid root offset/alignment");
   }
   auto quantized = nanovdb::tools::createNanoGrid<decltype(source), nanovdb::Fp4>(source);
-  scene.data(quantized.data(), quantized.size(), false, "Float stage rejects real Fp4 grid");
+  scene.data(quantized.data(), quantized.size(), true, "accept real Fp4 grid");
   std::vector<unsigned char> unaligned(handle.size() + 1);
   std::memcpy(unaligned.data() + 1, raw, handle.size());
   scene.data(unaligned.data() + 1, handle.size(), true, "unaligned application buffer");

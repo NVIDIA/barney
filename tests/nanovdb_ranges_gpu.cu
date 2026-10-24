@@ -17,8 +17,10 @@ static void check(cudaError_t error)
   if (error != cudaSuccess) throw std::runtime_error(cudaGetErrorString(error));
 }
 
-__global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
-                           nanovdb::Coord dims, bool identity, int *failures)
+template<typename BuildT>
+__global__ void checkRanges(nanovdb::NanoGrid<BuildT> *grid,
+                           nanovdb::Coord dims, bool identity,
+                           float a, float b, float c, int *failures)
 {
 #if RTC_DEVICE_CODE
   const int tid = int(blockIdx.x * blockDim.x + threadIdx.x);
@@ -32,16 +34,16 @@ __global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
     hi[i] = world.min()[i] + (cell[i]+1)*spacing;
   }
   const auto range = barney_nanovdb::scalarRange(*grid, nanovdb::Vec3dBBox(lo,hi));
-  NanoVDBDataSampler<float>::DD sampler;
+  typename NanoVDBDataSampler<BuildT>::DD sampler;
   sampler.nvdbGrid = grid;
   const auto bounds = grid->indexBBox();
   sampler.indexBounds = box3i(vec3i(bounds.min()[0],bounds.min()[1],bounds.min()[2]),
                              vec3i(bounds.max()[0],bounds.max()[1],bounds.max()[2]));
   if (identity && tid == 0) {
-    if (sampler.sample(vec3f(-18.5f,2.5f,-2.5f)) != 1.f
-        || sampler.sample(vec3f(-18.f,2.5f,-2.5f)) != -3.f
-        || sampler.sample(vec3f(-17.5f,2.5f,-2.5f)) != -7.f
-        || range.lower > -7.f || range.upper < 9.f)
+    if (fabsf(sampler.sample(vec3f(-18.5f,2.5f,-2.5f)) - a) > 1e-5f
+        || fabsf(sampler.sample(vec3f(-18.f,2.5f,-2.5f)) - (a+b)*.5f) > 1e-5f
+        || fabsf(sampler.sample(vec3f(-17.5f,2.5f,-2.5f)) - b) > 1e-5f
+        || range.lower > b || range.upper < c)
       atomicAdd(failures, 1);
     // Hand-calculated quarter weights for corners 1, -7 and six 9s.
     const vec3f points[] = {vec3f(-18.5f,2.5f,-2.5f),
@@ -49,12 +51,18 @@ __global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
       vec3f(-18.25f,2.75f,-2.25f), vec3f(-17.75f,3.25f,-1.75f),
       vec3f(-20.f,1.f,-4.f), vec3f(-18.25f,3.25f,-2.25f),
       vec3f(-18.25f,2.75f,-1.75f), vec3f(-17.75f,2.75f,-2.25f)};
-    const float linear[] = {1.f, -1.f, -5.f, 3.375f, 8.125f, 1.f, 7.125f, 7.125f, 1.125f};
-    const float nearest[] = {1.f, 1.f, -7.f, 1.f, 9.f, 1.f, 9.f, 9.f, -7.f};
+    // Worked trilinear weights applied to NanoVDB-decoded corners.
+    const float linear[] = {a, .75f*a+.25f*b, .25f*a+.75f*b,
+      .421875f*a+.140625f*b+.4375f*c,
+      .015625f*a+.046875f*b+.9375f*c, a,
+      .140625f*a+.046875f*b+.8125f*c,
+      .140625f*a+.046875f*b+.8125f*c,
+      .140625f*a+.421875f*b+.4375f*c};
+    const float nearest[] = {a, a, b, a, c, a, c, c, b};
     for (int mode = 0; mode < 2; ++mode) {
       sampler.filterMode = mode ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
       for (int i = 0; i < 9; ++i)
-        if (sampler.sample(points[i]) != (mode ? nearest[i] : linear[i]))
+        if (fabsf(sampler.sample(points[i]) - (mode ? nearest[i] : linear[i])) > 1e-5f)
           atomicAdd(failures, 1);
     }
   }
@@ -73,13 +81,14 @@ __global__ void checkRanges(nanovdb::NanoGrid<float> *grid,
 #endif
 }
 
-int main()
+template<typename BuildT>
+static void checkType()
 {
   int devices = 0;
   auto error = cudaGetDeviceCount(&devices);
   if (error != cudaSuccess || devices == 0) {
     std::printf("SKIP: CUDA device unavailable: %s\n", cudaGetErrorString(error));
-    return 77;
+    throw std::runtime_error("CUDA device required");
   }
   cudaDeviceProp properties;
   check(cudaGetDeviceProperties(&properties, 0));
@@ -90,10 +99,18 @@ int main()
   accessor.setValue(nanovdb::Coord(-19,2,-3), 1.f);
   accessor.setValue(nanovdb::Coord(109,66,61), 2.f);
   for (auto stats : {nanovdb::tools::StatsMode::BBox, nanovdb::tools::StatsMode::All}) {
-    auto handle = nanovdb::tools::createNanoGrid(source, stats);
-    auto *grid = handle.grid<float>();
-    auto *leaf = const_cast<nanovdb::NanoLeaf<float> *>(grid->getAccessor().probeLeaf(nanovdb::Coord(-18,2,-3)));
+    auto floatHandle = nanovdb::tools::createNanoGrid(source, stats);
+    auto *floatGrid = floatHandle.grid<float>();
+    auto *leaf = const_cast<nanovdb::NanoLeaf<float> *>(floatGrid->getAccessor().probeLeaf(nanovdb::Coord(-18,2,-3)));
     leaf->setValueOnly(nanovdb::Coord(-18,2,-3), -7.f);
+    auto handle = nanovdb::tools::createNanoGrid<nanovdb::NanoGrid<float>, BuildT>(*floatGrid, stats);
+    auto *grid = handle.template grid<BuildT>();
+    const auto acc = grid->getAccessor();
+    const float a = acc.getValue(nanovdb::Coord(-19,2,-3));
+    const float b = acc.getValue(nanovdb::Coord(-18,2,-3));
+    const float c = acc.getValue(nanovdb::Coord(-19,3,-3));
+    if (grid->tree().isActive(nanovdb::Coord(-18,2,-3)))
+      throw std::runtime_error("inactive fixture lost its mask");
     for (int affine = 0; affine < 2; ++affine) {
       if (affine) {
         const double matrix[9] = {0,-2,0, 1,0,0.5, 0,0,0.75};
@@ -109,7 +126,7 @@ int main()
               corner & 2 ? 67 : 2, corner & 4 ? 62 : -3)));
         grid->mWorldBBox = world;
       }
-      nanovdb::NanoGrid<float> *deviceGrid;
+      nanovdb::NanoGrid<BuildT> *deviceGrid;
       int *failures;
       check(cudaMalloc(&deviceGrid, handle.size()));
       check(cudaMallocManaged(&failures, sizeof(int)));
@@ -117,13 +134,22 @@ int main()
       check(cudaMemcpy(deviceGrid, handle.data(), handle.size(), cudaMemcpyHostToDevice));
       const auto dims = barney_nanovdb::macrocellDims(grid->indexBBox());
       const int count = dims[0]*dims[1]*dims[2];
-      checkRanges<<<(count+127)/128,128>>>(deviceGrid, dims, !affine, failures);
+      checkRanges<<<(count+127)/128,128>>>(deviceGrid, dims, !affine, a, b, c, failures);
       check(cudaGetLastError());
       check(cudaDeviceSynchronize());
       if (*failures) throw std::runtime_error("GPU local ranges underbound production samples");
       check(cudaFree(deviceGrid));
       check(cudaFree(failures));
-      std::printf("PASS: GPU ranges/samples/non-monotonic majorants: %d cells, stats=%d affine=%d\n", count, int(stats), affine);
+      std::printf("PASS: GPU ranges/samples/non-monotonic majorants: type=%d %d cells, stats=%d affine=%d\n", int(grid->gridType()), count, int(stats), affine);
     }
   }
+}
+
+int main()
+{
+  checkType<float>();
+  checkType<nanovdb::Fp4>();
+  checkType<nanovdb::Fp8>();
+  checkType<nanovdb::Fp16>();
+  checkType<nanovdb::FpN>();
 }

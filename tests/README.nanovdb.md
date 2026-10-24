@@ -1,4 +1,11 @@
-# NanoVDB Float regression tests
+# NanoVDB regression tests
+
+Supported grid types are **Float, Fp4, Fp8, Fp16 and FpN**. Ticket 06's
+[quantized acceptance evidence](nanovdb_quantized_evidence.md) records typed
+CPU/OptiX/native-CUDA ingestion, sampling, ranges, rendering and update checks.
+NanoVDB owns quantized decoding; these tests do not establish codec fidelity.
+Nearest and linear are supported; cubic and unknown strings fall back to linear.
+This remains partial extension support, not full conformance.
 
 Ticket 05's [Float acceptance evidence](nanovdb_float_evidence.md) records the
 current CPU/OptiX/native-CUDA backend matrix, analytical homogeneous transmission,
@@ -21,8 +28,9 @@ referencing a nonexistent `LeafNode::isActive`. Other client warnings are errors
 
 ## Contract and envelope inventory
 
-The Float reader uses `Version::isCompatible()`: in the bundled reader this is
-`major == 32`. The generated Float, Int32 and Fp4 fixtures are version **32.7.0**.
+The reader uses `Version::isCompatible()`: in the bundled reader this is
+`major == 32`. Generated Float, Fp4, Fp8, Fp16, FpN and Int32 fixtures are
+version **32.7.0**.
 No other real compatible-version fixtures were available; modifying the major
 to 31 tests rejection, not acceptance of another version.
 
@@ -33,13 +41,15 @@ Checks precede their corresponding reads:
    is finalized and reports missing data.
 2. Require `sizeof(GridData)` (672 bytes here), then copy into an aligned local
    header. Check the reader's header validity predicate, version compatibility,
-   Float type, count 1 and index 0.
+   supported type (Float/Fp4/Fp8/Fp16/FpN), count 1 and index 0.
 3. Require the declared payload within the array and at least GridData plus
    TreeData (64 bytes). Bound its size by pointer-offset representation and
    `size_t - NANOVDB_DATA_ALIGNMENT` before HostBuffer's padded allocation.
 4. Copy TreeData. Require its signed root offset to be past TreeData, aligned
-   to 32 bytes, and within the declared payload, with a complete fixed Float
-   RootNode available. Subtraction-based bounds checks avoid offset overflow.
+   to 32 bytes, and within the declared payload, with a complete fixed typed
+   RootNode available (64 bytes for each supported type in this reader).
+   Subtraction-based bounds checks avoid offset overflow. The same type table
+   selects validation sizes, metadata, range kernels and sampler geometry.
 5. Zero active voxels means valid/empty immediately, regardless of stored
    bounds, background or topology. No native field or macrocell launch is made.
 6. For nonempty fields, copy the root index bbox; compute each dimension in
@@ -331,7 +341,9 @@ that baseline/tooling limitation; no suppression or full device-safety claim is
 made. Normal OptiX integration tests pass, including nearest/linear dispatch
 and shared-field filter updates. Native CUDA RT was subsequently exercised in
 ticket 05; see the current evidence matrix linked above. Multi-GPU, HIP and HIPRT
-remain unverified. Quantized types remain a later ticket.
+remain unverified. Quantized coverage is now recorded in
+[nanovdb_quantized_evidence.md](nanovdb_quantized_evidence.md); the Float results
+above remain historical evidence, not inferred quantized results.
 
 The repository's `just build` must be invoked from the ticket workspace. The
 initial direct configure selected `lib64`, while the recipe removes a file in

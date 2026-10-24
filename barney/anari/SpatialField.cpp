@@ -212,8 +212,9 @@ namespace BARNEY_NS {
         reportMessage(ANARI_SEVERITY_ERROR, "Incompatible NanoVDB version");
         return;
       }
-      if (header.mGridType != nanovdb::GridType::Float) {
-        reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB requires a Float grid");
+      const size_t rootSize = barney_nanovdb::fixedRootSize(header.mGridType);
+      if (!rootSize) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Unsupported NanoVDB grid type");
         return;
       }
       if (header.mGridCount != 1 || header.mGridIndex != 0) {
@@ -237,13 +238,12 @@ namespace BARNEY_NS {
       nanovdb::TreeData tree;
       std::memcpy(&tree, static_cast<const char *>(m_data->data()) + sizeof(header),
                   sizeof(tree));
-      using Root = nanovdb::NanoGrid<float>::TreeType::RootType;
       const auto rootOffset = tree.mNodeOffset[3];
       const auto treeBytes = header.mGridSize - sizeof(header);
       if (rootOffset < int64_t(sizeof(tree))
           || uint64_t(rootOffset) % NANOVDB_DATA_ALIGNMENT != 0
           || uint64_t(rootOffset) > treeBytes
-          || sizeof(Root) > treeBytes - uint64_t(rootOffset)) {
+          || rootSize > treeBytes - uint64_t(rootOffset)) {
         reportMessage(ANARI_SEVERITY_ERROR, "Truncated or misaligned NanoVDB root");
         return;
       }

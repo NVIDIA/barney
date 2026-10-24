@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <nanovdb/NanoVDB.h>
+#include "NanoVDBTypes.h"
 #include <cmath>
 #include <climits>
 #include <stdexcept>

@@ -17,12 +17,7 @@
 #include <nanovdb/HostBuffer.h>
 #endif
 
-// Each entry is MACRO(BuildType, Suffix, EnumName) where:
-//   BuildType — the nanovdb build type (template argument to NanoTree<>)
-//   Suffix    — a token used in symbol names (e.g., device program names)
-//   EnumName  — the nanovdb::GridType enumerator name
-#define BARNEY_NANOVDB_FLOAT_TYPES(MACRO) \
-  MACRO(float, float, Float)
+#include "native/volume/NanoVDBTypes.h"
 
 namespace BARNEY_NS {
   namespace native {

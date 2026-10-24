@@ -11,8 +11,14 @@ using namespace BARNEY_NS;
 using namespace BARNEY_NS::native;
 using namespace owl::common;
 
+#include "nanovdb_quantized.h"
+
 int main()
 {
+  checkQuantized<nanovdb::Fp4>();
+  checkQuantized<nanovdb::Fp8>();
+  checkQuantized<nanovdb::Fp16>();
+  checkQuantized<nanovdb::FpN>();
   nanovdb::tools::build::Grid<float> source(9.f);
   auto acc = source.getAccessor();
   acc.setValue(nanovdb::Coord(-19, 2, -3), 1.f);
