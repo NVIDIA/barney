@@ -4,6 +4,7 @@
 #include "native/volume/NanoVDBHelpers.h"
 #include "nanovdb_majorants.h"
 #include "nanovdb_fixtures.h"
+#include "nanovdb_finite.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cuda_runtime.h>
 #include <cstdio>
@@ -25,6 +26,8 @@ __global__ void checkRanges(nanovdb::NanoGrid<BuildT> *grid,
 {
 #if RTC_DEVICE_CODE
   const int tid = int(blockIdx.x * blockDim.x + threadIdx.x);
+  if (tid == 0 && !checkFiniteClassification())
+    atomicAdd(failures, 1);
   if (tid >= dims[0]*dims[1]*dims[2]) return;
   const int cell[3] = {tid % dims[0], (tid/dims[0]) % dims[1], tid/(dims[0]*dims[1])};
   nanovdb::Vec3d lo, hi;

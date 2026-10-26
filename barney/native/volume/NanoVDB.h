@@ -18,6 +18,7 @@
 #endif
 
 #include "native/volume/NanoVDBTypes.h"
+#include "native/volume/NanoVDBMath.h"
 
 namespace BARNEY_NS {
   namespace native {
@@ -103,7 +104,7 @@ namespace BARNEY_NS {
       const auto mapped = nvdbGrid->worldToIndexF(nvdbLoc);
       nanovdb::Vec3d indexPos(mapped[0], mapped[1], mapped[2]);
       for (int axis = 0; axis < 3; ++axis) {
-        if (!std::isfinite(indexPos[axis])) {
+        if (!barney_nanovdb::isFinite(indexPos[axis])) {
           // Finite float maps/positions can overflow in the subtraction or
           // dot product (including 0*inf). Widen the same stored coefficients,
           // not a different inverse, before any arithmetic or integer cast.

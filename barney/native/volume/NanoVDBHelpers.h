@@ -3,6 +3,7 @@
 #pragma once
 
 #include "NanoVDBTypes.h"
+#include "NanoVDBMath.h"
 #include <cmath>
 #include <climits>
 #include <stdexcept>
@@ -87,7 +88,7 @@ __hostdev__ inline Interval scalarRange(const nanovdb::NanoGrid<BuildT> &grid,
     // A whole-axis fallback handles overflow without a near-singular cutoff.
     double lower = down(double(sum.lower) - 0.5);
     double upper = up(double(sum.upper) - 0.5);
-    if (!std::isfinite(lower) || !std::isfinite(upper)) {
+    if (!isFinite(lower) || !isFinite(upper)) {
       lo[i] = bounds.min()[i];
       hi[i] = bounds.max()[i];
     } else {

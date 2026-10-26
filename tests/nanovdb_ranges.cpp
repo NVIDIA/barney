@@ -4,6 +4,7 @@
 #include "native/volume/NanoVDBHelpers.h"
 #include "nanovdb_majorants.h"
 #include "nanovdb_fixtures.h"
+#include "nanovdb_finite.h"
 #include <nanovdb/tools/CreateNanoGrid.h>
 #include <cstdio>
 #include <stdexcept>
@@ -16,6 +17,9 @@ using namespace owl::common;
 
 int main()
 {
+  if (!checkFiniteClassification())
+    throw std::runtime_error("host/device finite classification");
+  std::puts("PASS: finite classification including NaN and infinities");
   checkQuantized<nanovdb::Fp4>();
   checkQuantized<nanovdb::Fp8>();
   checkQuantized<nanovdb::Fp16>();
