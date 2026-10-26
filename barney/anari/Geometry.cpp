@@ -633,11 +633,16 @@ namespace BARNEY_NS {
         bnDataCreate(context, slot, BN_FLOAT4, numVertices, vertex.data());
       bnSetAndRelease(geom, "vertices", vertices);
 
-      int numIndices = (int)m_index->totalSize();
+      // 'primitive.index' is optional; without it every vertex except
+      // the last one starts a segment
+      int numIndices = m_index
+        ? (int)m_index->totalSize()
+        : std::max(numVertices - 1, 0);
       std::vector<math::int2> index(numIndices);
-      const int *in_index = (const int *)m_index->data();
+      const int *in_index = m_index ? (const int *)m_index->data() : nullptr;
       for (int i = 0; i < numIndices; i++) {
-        index[i] = math::int2(in_index[i], in_index[i] + 1);
+        int begin = in_index ? in_index[i] : i;
+        index[i] = math::int2(begin, begin + 1);
       }
 
       BNData indices = bnDataCreate(context, slot, BN_INT2,
@@ -663,10 +668,16 @@ namespace BARNEY_NS {
       if (!isValid())
         return {};
 
+      // 'vertex.radius' is optional; fall back to the global radius the
+      // same way setBarneyParameters() does
+      const bool haveVertexRadius
+        = m_vertexRadius && m_vertexRadius->totalSize() > 0;
       box3 result;
       for (size_t i = 0; i < m_vertexPosition->totalSize(); ++i) {
         math::float3 v = *(m_vertexPosition->beginAs<math::float3>() + i);
-        float r = *(m_vertexRadius->beginAs<float>() + i);
+        float r = haveVertexRadius
+          ? *(m_vertexRadius->beginAs<float>() + i)
+          : m_globalRadius;
         result.insert(math::float3{v.x - r, v.y - r, v.z - r});
         result.insert(math::float3{v.x + r, v.y + r, v.z + r});
       }
