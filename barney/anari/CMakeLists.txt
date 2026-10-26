@@ -79,7 +79,10 @@ if (BARNEY_AUTO_GENERATE_QUERIES)
     #--output ${CMAKE_CURRENT_BINARY_DIR}/generated_queries.cpp
     --output ${CMAKE_CURRENT_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    DEPENDS ${CORE_JSONS} ${MY_JSONS}
+    DEPENDS ${API_JSONS} ${MY_JSONS}
+      ${ANARI_CODE_GEN_ROOT}/generate_queries.py
+      ${ANARI_CODE_GEN_ROOT}/merge_anari.py
+      ${ANARI_CODE_GEN_ROOT}/hash_gen.py
   )
   set(QUERIES_DIR ${CMAKE_CURRENT_BINARY_DIR}/)
   set(QUERIES_SOURCES ${QUERIES_DIR}/generated_queries.cpp)
