@@ -30,6 +30,32 @@ the bundled construction API; it does not relabel an older-version payload.
 GCC's `-Wno-template-body` works around the bundled GridBuilder's unused iterator
 referencing a nonexistent `LeafNode::isActive`. Other client warnings are errors.
 
+## Extension declarations and query snapshots
+
+All five backend manifests declare `KHR_SPATIAL_FIELD_NANOVDB`. Regenerate the
+checked-in CPU, CUDA, OptiX, HIP and HIPRT queries with the same SDK used to build:
+
+```sh
+python3 scripts/generate_anari_queries.py /path/to/anari/share/anari/code_gen
+python3 scripts/generate_anari_queries.py /path/to/anari/share/anari/code_gen --check
+bash tests/test_anari_nanovdb_queries.sh
+```
+
+The check compares complete generated files, not just extension strings. The
+query test compiles and executes each backend's query implementation without
+requiring its rendering hardware, checking extension discovery, `nanovdb`
+subtype, required byte-array data, linear default, and extension provenance.
+This does not establish HIP/HIPRT rendering support on a non-HIP machine.
+
+The inherited SDK schema lists `cubic` as a filter value. Barney's documented
+linear fallback still applies; declaration of the extension is not a claim of
+full cubic-filter conformance. Query generation uses the SDK schema unchanged.
+
+To verify the no-generator build path, configure
+`-DBARNEY_AUTO_GENERATE_QUERIES=OFF`, build, then restore the option to `ON` for
+normal development. CMake tracks SDK API JSON and generator Python dependencies
+so edits to either trigger query regeneration.
+
 ## Contract and envelope inventory
 
 The reader uses `Version::isCompatible()`: in the bundled reader this is
