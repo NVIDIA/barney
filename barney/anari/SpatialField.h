@@ -117,6 +117,8 @@ namespace BARNEY_NS {
         helium::ChangeObserverPtr<helium::Array1D> blockOrigins;
         helium::ChangeObserverPtr<helium::Array1D> blockLevel;
         helium::ChangeObserverPtr<helium::Array1D> data;
+        helium::float3 origin {0.f};
+        helium::float3 spacing {1.f};
       } m_params;
 
       struct BarneyData
