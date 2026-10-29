@@ -51,7 +51,7 @@ namespace BARNEY_NS {
         return new UnstructuredField(s);
       if (subType == "nanovdb")
         return new NanoVDBSpatialField(s);
-      if (subType == "blockStructured")
+      if (subType == "blockStructured" || subType == "amr")
         return new BlockStructuredField(s);
       if (subType == "structuredRegular")
         return new StructuredRegularField(s);
