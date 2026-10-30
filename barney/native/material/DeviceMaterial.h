@@ -118,8 +118,9 @@ namespace BARNEY_NS {
                                 const Sampler::DD *samplers,
                                 bool dbg) const
     {
-      ray.setHit(hitData.worldPosition,hitData.worldNormal,
-                 hitData.t,createBSDF(hitData,samplers,dbg));
+      ray.setHit(hitData.worldPosition,hitData.worldShadingNormal,
+                 hitData.t,createBSDF(hitData,samplers,dbg),
+                 hitData.worldGeometricNormal);
     }
 #endif
   }

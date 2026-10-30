@@ -279,6 +279,13 @@ namespace BARNEY_NS {
     {
       SetActiveGPU forDuration(device);
       int numInstances = (int)groups.size();
+      // All instances may have been rejected before reaching the backend.
+      if (!numInstances) {
+        if (scene) hiprtDestroyScene(device->hiprtCtx,scene);
+        scene = nullptr;
+        d_accel = nullptr;
+        return;
+      }
 
       // per-instance shading records (transforms + the group's SBT/prim record).
       std::vector<InstanceRecord> hostRecs(numInstances);

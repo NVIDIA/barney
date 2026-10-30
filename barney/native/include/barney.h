@@ -397,6 +397,9 @@ void bnRender(BNRenderer    renderer,
               BNCamera      camera,
               BNFrameBuffer fb);
 
+/*! Instance transforms must be finite with a representable finite inverse.
+    Invalid submissions throw before changing the model; singular instances
+    have no supported traversal or normal transform. */
 BARNEY_API
 void bnSetInstances(BNModel model,
                     int whichSlot,
@@ -421,7 +424,9 @@ void bnSetInstanceMotionDeltas(BNModel model,
 /*! update only the instance transforms for the given slot, reusing
     existing group structures. This is much faster than bnSetInstances +
     bnBuild when only transforms change (e.g., animation). The number of
-    instances must match what was previously set via bnSetInstances. */
+    instances must match what was previously set via bnSetInstances.
+    The same transform validity rules as bnSetInstances apply; an invalid
+    transform rejects the entire update before changing the model. */
 BARNEY_API
 void bnUpdateInstanceTransforms(BNModel model,
                                 int whichSlot,

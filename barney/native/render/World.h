@@ -37,6 +37,8 @@ namespace BARNEY_NS {
         int                  numPointLights  = 0;
         const PointLight::DD  *pointLights     = nullptr;
         int                 *instIDToUserInstID = 0;
+        // Indexed by native input instance ID, like instance attributes.
+        const float         *instanceOrientations = nullptr;
         const affine3f      *motionDeltas       = nullptr;
         int                  numMotionDeltas    = 0;
 
@@ -60,6 +62,7 @@ namespace BARNEY_NS {
       void set(const std::vector<PointLight::DD> &pointLights);
       void set(EnvMapLight::SP envMapLight, const affine3f &xfm);
       void setMotionDeltas(const std::vector<affine3f> &deltas);
+      void setInstanceOrientations(const std::vector<affine3f> &transforms);
 
       PODData::SP instanceAttributes[5];
       PODData::SP instanceUserIDs;
@@ -73,6 +76,7 @@ namespace BARNEY_NS {
         int numDirLights = 0;
         PointLight::DD *pointLights = 0;
         int numPointLights = 0;
+        float *instanceOrientations = nullptr;
         affine3f *motionDeltas = 0;
         int numMotionDeltas = 0;
       };

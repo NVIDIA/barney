@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "Instance.h"
+#include "native/common/InstanceTransform.h"
 // anari
 #include <anari/anari_cpp/ext/linalg.h>
 
@@ -54,6 +55,14 @@ namespace BARNEY_NS {
     
       m_transform     = xfm;
       m_prevTransform = prevXfm;
+      m_previousTransformValid = m_transformValid;
+      const owl::common::affine3f nativeXfm(
+        owl::common::LinearSpace3f(
+          owl::common::vec3f(xfm[0].x, xfm[0].y, xfm[0].z),
+          owl::common::vec3f(xfm[1].x, xfm[1].y, xfm[1].z),
+          owl::common::vec3f(xfm[2].x, xfm[2].y, xfm[2].z)),
+        owl::common::vec3f(xfm[3].x, xfm[3].y, xfm[3].z));
+      m_transformValid = native::usableInstanceTransform(nativeXfm);
       m_previousGroup = m_group.ptr;
       m_group = getParamObject<Group>("group");
     }
@@ -62,11 +71,15 @@ namespace BARNEY_NS {
     {
       if (!m_group)
         reportMessage(ANARI_SEVERITY_WARNING, "missing 'group' on ANARIInstance");
+      if (!m_transformValid)
+        reportMessage(ANARI_SEVERITY_WARNING,
+                      "omitting ANARIInstance: transform requires a finite inverse");
     }
 
     void Instance::markFinalized()
     {
-      if (m_group.ptr != m_previousGroup)
+      if (m_group.ptr != m_previousGroup
+          || m_transformValid != m_previousTransformValid)
         deviceState()->markStructuralSceneChanged();
       else
         deviceState()->markSceneChanged();
@@ -75,7 +88,7 @@ namespace BARNEY_NS {
 
     bool Instance::isValid() const
     {
-      return m_group;
+      return m_group && m_transformValid;
     }
 
     const Group *Instance::group() const

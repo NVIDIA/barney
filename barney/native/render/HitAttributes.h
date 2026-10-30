@@ -37,7 +37,10 @@ namespace BARNEY_NS {
       vec4f attribute[numAttributes];
       vec3f worldPosition;
       vec3f objectPosition;
-      vec3f worldNormal;
+      vec3f worldShadingNormal;
+      // Analytic primitives have identical geometric/shading normals; zero
+      // selects worldShadingNormal for those hits. Mesh hits set this independently.
+      vec3f worldGeometricNormal { 0.f };
       // this is a float*FOUR* because it can come from the attribute system
       vec4f objectNormal;
       // vec3f objectNormal;

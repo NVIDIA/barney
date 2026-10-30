@@ -76,6 +76,22 @@ namespace BARNEY_NS {
         bnSetAndRelease(geom, name.c_str(), attr);
     }
 
+    static bool validTangents(const helium::IntrusivePtr<Array1D> &array,
+                              size_t count)
+    {
+      if (!array || array->totalSize() < count)
+        return false;
+      switch (array->elementType()) {
+      case ANARI_FLOAT32_VEC3:
+      case ANARI_FLOAT32_VEC4:
+      case ANARI_FIXED16_VEC3:
+      case ANARI_FIXED16_VEC4:
+        return true;
+      default:
+        return false;
+      }
+    }
+
     // Base Geometry definitions //////////////////////////////////////////////////
 
     Geometry::Geometry(BarneyGlobalState *s)
@@ -112,7 +128,7 @@ namespace BARNEY_NS {
       return (Geometry *)new UnknownObject(ANARI_GEOMETRY, subType, s);
     }
 
-    void Geometry::setAttributes(BNGeom geom)
+    void Geometry::setAttributes(BNGeom geom, AttributeUpdate update)
     {
       int slot = deviceState()->slot;
       auto context = deviceState()->tether->context;
@@ -149,8 +165,6 @@ namespace BARNEY_NS {
               m_constantAttributes[4].w);
 
       addAttribute(geom, context, slot,
-                   m_vertexAttributes[0], "vertex.attribute0", this);
-      addAttribute(geom, context, slot,
                    m_vertexAttributes[1], "vertex.attribute1", this);
       addAttribute(geom, context, slot,
                    m_vertexAttributes[2], "vertex.attribute2", this);
@@ -169,36 +183,44 @@ namespace BARNEY_NS {
                    m_primitiveAttributes[3], "primitive.attribute3", this);
       addAttribute(geom, context, slot,
                    m_primitiveAttributes[4], "primitive.color", this);
+      if (update == AttributeUpdate::All)
+        addAttribute(geom, context, slot,
+                     m_vertexAttributes[0], "vertex.attribute0", this);
     }
 
-    void Triangle::setAttributes(BNGeom geom)
+    void Triangle::setAttributes(BNGeom geom, AttributeUpdate update)
     {
-      Geometry::setAttributes(geom);
+      if (update == AttributeUpdate::All) {
+        bnSetData(geom, "vertex.attribute0", nullptr);
+        bnSetData(geom, "faceVarying.attribute0", nullptr);
+        bnSetData(geom, "faceVarying.normal", nullptr);
+        if (!m_vertexNormal) bnSetData(geom, "vertex.normal", nullptr);
+      }
+      Geometry::setAttributes(geom, update);
       int slot = deviceState()->slot;
       auto context = deviceState()->tether->context;
+      const char *names[] = {"faceVarying.attribute1", "faceVarying.attribute2",
+                            "faceVarying.attribute3", "faceVarying.color"};
+      for (int i = 1; i < 5; ++i)
+        addAttribute(geom, context, slot,
+                     m_faceVaryingAttributes[i], names[i-1], this);
+      if (update == AttributeUpdate::MaterialAttributes)
+        return;
 
       addAttribute(geom, context, slot,
                    m_faceVaryingAttributes[0],
                    "faceVarying.attribute0", this);
       addAttribute(geom, context, slot,
-                   m_faceVaryingAttributes[1],
-                   "faceVarying.attribute1", this);
-      addAttribute(geom, context, slot,
-                   m_faceVaryingAttributes[2],
-                   "faceVarying.attribute2", this);
-      addAttribute(geom, context, slot,
-                   m_faceVaryingAttributes[3],
-                   "faceVarying.attribute3", this);
-      addAttribute(geom, context, slot,
-                   m_faceVaryingAttributes[4],
-                   "faceVarying.color", this);
-      addAttribute(geom, context, slot,
                    m_faceVaryingAttributes[5],
                    "faceVarying.normal", this);
-      addAttribute(geom, context, slot,
-                   m_vertexTangent, "vertex.tangent", this);
-      addAttribute(geom, context, slot,
-                   m_faceVaryingTangent, "faceVarying.tangent", this);
+      bnSetData(geom, "vertex.tangent", nullptr);
+      bnSetData(geom, "faceVarying.tangent", nullptr);
+      if (m_validVertexTangent)
+        addAttribute(geom, context, slot,
+                     m_vertexTangent.get(), "vertex.tangent", this);
+      if (m_validFaceTangent)
+        addAttribute(geom, context, slot,
+                     m_faceVaryingTangent.get(), "faceVarying.tangent", this);
     }
 
     void Geometry::commitParameters()
@@ -687,7 +709,9 @@ namespace BARNEY_NS {
     // Quad //
 
     Quad::Quad(BarneyGlobalState *s)
-      : Geometry(s), m_index(this), m_vertexPosition(this), m_vertexNormal(this)
+      : Geometry(s), m_index(this), m_vertexPosition(this), m_vertexNormal(this),
+        m_vertexTangent(this), m_faceVaryingTangent(this),
+        m_vertexUV(this), m_faceUV(this), m_faceNormal(this)
     {}
 
     void Quad::commitParameters()
@@ -703,6 +727,9 @@ namespace BARNEY_NS {
       m_vertexAttributes[4] = getParamObject<Array1D>("vertex.color");
       m_vertexTangent = getParamObject<Array1D>("vertex.tangent");
       m_faceVaryingTangent = getParamObject<Array1D>("faceVarying.tangent");
+      m_vertexUV = getParamObject<Array1D>("vertex.attribute0");
+      m_faceUV = getParamObject<Array1D>("faceVarying.attribute0");
+      m_faceNormal = getParamObject<Array1D>("faceVarying.normal");
     }
 
     void Quad::finalize()
@@ -739,6 +766,10 @@ namespace BARNEY_NS {
           m_generatedIndices.push_back(int(index.w));
         }
       }
+      m_validFaceTangent = validTangents(m_faceVaryingTangent.get(),
+                                         m_generatedIndices.size()/6*4);
+      m_validVertexTangent = validTangents(m_vertexTangent.get(),
+                                           m_vertexPosition->totalSize());
     }
 
     bool Quad::isValid() const
@@ -757,55 +788,55 @@ namespace BARNEY_NS {
       bnSetAndRelease(geom, "indices", _indices);
 
       bnSetData(geom, "vertices", m_vertexPosition->barneyData());
-      if (m_vertexNormal)
-        bnSetData(geom, "vertex.normal", m_vertexNormal->barneyData());
+      addAttribute(geom, context, slot,
+                   m_vertexNormal.get(), "vertex.normal", this);
 
-      setAttributes(geom);
+      setAttributes(geom, AttributeUpdate::All);
     }
 
-    void Quad::setAttributes(BNGeom geom)
+    void Quad::setAttributes(BNGeom geom, AttributeUpdate update)
     {
-      Geometry::setAttributes(geom);
+      if (update == AttributeUpdate::All) {
+        bnSetData(geom, "vertex.attribute0", nullptr);
+        if (!m_vertexNormal) bnSetData(geom, "vertex.normal", nullptr);
+      }
+      Geometry::setAttributes(geom, update);
+      if (update == AttributeUpdate::MaterialAttributes)
+        return;
       int slot = deviceState()->slot;
       auto context = deviceState()->tether->context;
 
-      // vertex.tangent is indexed by the generated triangle indices, just
-      // like vertex.normal/position, so it forwards unchanged.
-      addAttribute(geom, context, slot,
-                   m_vertexTangent, "vertex.tangent", this);
+      bnSetData(geom, "vertex.tangent", nullptr);
+      bnSetData(geom, "faceVarying.tangent", nullptr);
+      if (m_validVertexTangent)
+        addAttribute(geom, context, slot,
+                     m_vertexTangent.get(), "vertex.tangent", this);
 
-      // faceVarying.tangent supplies one value per quad corner (4/quad),
-      // but the underlying triangles read faceVarying at 3*primID+{0,1,2}
-      // (6/quad). Expand each quad's 4 corners into the two triangles'
-      // 6 corners following finalize()'s split: (0,1,2) and (0,2,3).
-      if (m_faceVaryingTangent) {
+      auto expand = [&](Array1D *array, const char *name) {
+        bnSetData(geom, name, nullptr);
+        if (!array)
+          return;
         std::vector<float> src;
-        int components = demoteToF32N(m_faceVaryingTangent, src);
-        if (components == 0) {
-          reportMessage(ANARI_SEVERITY_WARNING,
-            "unsupported element type (%s) for parameter 'faceVarying.tangent'",
-            anari::toString(m_faceVaryingTangent->elementType()));
-        } else {
-          const size_t numCorners = src.size() / components;
-          const size_t numQuads = numCorners / 4;
-          auto corner = [&](size_t c) {
-            const float *v = &src[c * components];
-            // VEC3 tangents default to +1 handedness, matching typedRead.
-            return math::float4(v[0], v[1], v[2],
-                                components >= 4 ? v[3] : 1.f);
-          };
-          static const int localCorners[6] = { 0, 1, 2, 0, 2, 3 };
-          std::vector<math::float4> expanded(numQuads * 6);
-          for (size_t q = 0; q < numQuads; ++q)
-            for (int k = 0; k < 6; ++k)
-              expanded[q * 6 + k] = corner(q * 4 + localCorners[k]);
-
-          BNData attr = bnDataCreate(context, slot, BN_FLOAT4,
-                                     expanded.size(), expanded.data());
-          if (attr)
-            bnSetAndRelease(geom, "faceVarying.tangent", attr);
-        }
-      }
+        const int components = demoteToF32N(array,src);
+        if (components < 1 || components > 4)
+          return;
+        const size_t numQuads = src.size()/components/4;
+        static const int localCorners[6] = {0,1,2,0,2,3};
+        std::vector<float> expanded(numQuads*6*components);
+        for (size_t q = 0; q < numQuads; ++q)
+          for (int k = 0; k < 6; ++k)
+            for (int d = 0; d < components; ++d)
+              expanded[(q*6+k)*components+d]
+                = src[(q*4+localCorners[k])*components+d];
+        const BNDataType types[] = {BN_FLOAT,BN_FLOAT2,BN_FLOAT3,BN_FLOAT4};
+        bnSetAndRelease(geom, name,
+          bnDataCreate(context, slot, types[components-1],
+                       numQuads*6, expanded.data()));
+      };
+      expand(m_faceNormal.get(), "faceVarying.normal");
+      expand(m_faceUV.get(), "faceVarying.attribute0");
+      if (m_validFaceTangent)
+        expand(m_faceVaryingTangent.get(), "faceVarying.tangent");
     }
 
     const char *Quad::bnSubtype() const
@@ -851,7 +882,9 @@ namespace BARNEY_NS {
       : Geometry(s),
         m_index(this),
         m_vertexPosition(this),
-        m_vertexNormal(this)
+        m_vertexNormal(this),
+        m_vertexTangent(this), m_faceVaryingTangent(this),
+        m_vertexUV(this), m_faceUV(this), m_faceNormal(this)
     {
     }
 
@@ -872,6 +905,9 @@ namespace BARNEY_NS {
       m_faceVaryingAttributes[3] = getParamObject<Array1D>("faceVarying.attribute3");
       m_faceVaryingAttributes[4] = getParamObject<Array1D>("faceVarying.color");
       m_faceVaryingAttributes[5] = getParamObject<Array1D>("faceVarying.normal");
+      m_vertexUV = getParamObject<Array1D>("vertex.attribute0");
+      m_faceUV = getParamObject<Array1D>("faceVarying.attribute0");
+      m_faceNormal = getParamObject<Array1D>("faceVarying.normal");
       m_vertexTangent = getParamObject<Array1D>("vertex.tangent");
       m_faceVaryingTangent = getParamObject<Array1D>("faceVarying.tangent");
     }
@@ -889,6 +925,11 @@ namespace BARNEY_NS {
         m_generatedIndices.resize(m_vertexPosition->totalSize());
         std::iota(m_generatedIndices.begin(), m_generatedIndices.end(), 0);
       }
+      const size_t corners = m_index
+        ? 3*m_index->totalSize() : m_generatedIndices.size()/3*3;
+      m_validFaceTangent = validTangents(m_faceVaryingTangent.get(), corners);
+      m_validVertexTangent = validTangents(m_vertexTangent.get(),
+                                           m_vertexPosition->totalSize());
     }
 
     bool Triangle::isValid() const
@@ -909,10 +950,10 @@ namespace BARNEY_NS {
       bnSetAndRelease(geom, "indices", _indices);
 
       bnSetData(geom, "vertices", m_vertexPosition->barneyData());
-      if (m_vertexNormal)
-        bnSetData(geom, "vertex.normal", m_vertexNormal->barneyData());
+      addAttribute(geom, context, slot,
+                   m_vertexNormal.get(), "vertex.normal", this);
 
-      setAttributes(geom);
+      setAttributes(geom, AttributeUpdate::All);
     }
 
     const char *Triangle::bnSubtype() const

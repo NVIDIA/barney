@@ -7,7 +7,7 @@
 #include "native/light/Light.h"
 #include "native/DeviceGroup.h"
 #include "native/common/math.h"
-#include "native/render/DG.h"
+#include "native/render/ShadingInteraction.h"
 
 /*! for debugging only - if enabled the envmap light will return a
   constant radiance no matter what map was specified */
@@ -139,24 +139,14 @@ namespace BARNEY_NS {
       return ONE_OVER_FOUR_PI;
 #endif
   
-      if (!texture)
-        // if we don't have a texture barney will use a env-map light
-        // with constant ambient radiance; the pdf of that will be a
-        // uniform 1/(4*PI). It would be cleaner to have this handled in
-        // a wrapper class that handles both env-map and non-env-map
-        // cases (instead of returning a proper non-envmap pdf from the
-        // envmap class...), but shadeRays currently only asks the
-        // envmap for the light pdf, so this is the best way to put
-        // it... for now.
-        return ONE_OVER_FOUR_PI;
+      if (!texture) return 0.f;
     
       vec2i pixel = worldToPixel(dir);
       float pdf_y = cdfGetPDF(pixel.y,cdf_y,dims.y);
 
       float pdf_x = cdfGetPDF(pixel.x,allCDFs_x+pixel.y*dims.x,dims.x);
 
-      float rel_y = (pixel.y+.5f) / dims.y;
-      const float theta = ONE_PI * rel_y;
+      const float theta = sphericalTheta(normalize(xfmVector(toLocal,dir)));
 
       return pdf_x * pdf_y * 1.f/(TWO_PI*ONE_PI*sinf(theta));
     }
@@ -243,6 +233,7 @@ namespace BARNEY_NS {
       sample.pdf
         = pdf_x*pdf_y
         * 1.f/(TWO_PI*ONE_PI*sinf(theta));
+      sample.environment = true;
     
       sample.distance = BARNEY_INF;
       return sample;

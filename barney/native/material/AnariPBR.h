@@ -145,35 +145,33 @@ namespace BARNEY_NS {
         const vec3f bc = (const vec3f&)baseColor;
         bsdf.baseColor = bc;
       }
-      // Resolve the shading normal to world space. The geometric world
-      // normal is the fallback and the frame a normal map is perturbed
-      // through.
-      const vec3f Ng = normalize((const vec3f&)hitData.worldNormal);
+      // Map both lobes independently around the interpolated shading frame.
+      const vec3f shadingNormal = normalize((const vec3f&)hitData.worldShadingNormal);
       if (this->normal.type == PossiblyMappedParameter::SAMPLER) {
-        const vec3f ts = normalize(((const vec3f)normal)*2.f-1.f);
+        const vec3f ts = (const vec3f)normal;
         const vec3f N = packedBSDF::physicallybased::applyNormalMap
-          (ts,Ng,hitData.worldTangent);
+          (ts,shadingNormal,hitData.worldTangent);
         bsdf.normal = N;
       } else {
         const vec3f N = normalize((const vec3f)normal);
-        const vec3f Nw = (dot(N,N) > 1e-12f) ? N : Ng;
+        const vec3f Nw = (dot(N,N) > 1e-12f) ? N : shadingNormal;
         bsdf.normal = Nw;
       }
       // Clearcoat normal: same TBN treatment as the base normal.
       if (this->clearcoatNormal.type == PossiblyMappedParameter::SAMPLER) {
-        const vec3f ts = normalize(((const vec3f)clearcoatNormal)*2.f-1.f);
+        const vec3f ts = (const vec3f)clearcoatNormal;
         const vec3f Nc = packedBSDF::physicallybased::applyNormalMap
-          (ts,Ng,hitData.worldTangent);
+          (ts,shadingNormal,hitData.worldTangent);
         bsdf.clearcoatNormal = Nc;
       } else {
         const vec3f Nc = normalize((const vec3f)clearcoatNormal);
-        const vec3f Nw = (dot(Nc,Nc) > 1e-12f) ? Nc : Ng;
+        const vec3f Nw = (dot(Nc,Nc) > 1e-12f) ? Nc : shadingNormal;
         bsdf.clearcoatNormal = Nw;
       }
       bsdf.metallic = metallic.x;
       bsdf.roughness = roughness.x;
       bsdf.transmission = transmission.x;
-      // Stored raw; the BSDF derives eta from dg.insideMedium at shading time
+      // Stored raw; the BSDF derives eta from interaction.insideMedium at shading time
       // (eta = insideMedium ? ior : 1/ior).
       // Clamp away degenerate ior <= 0, which would make eta = 1/ior infinite
       // and poison computeDielectricF0 with NaNs.
