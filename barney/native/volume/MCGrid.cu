@@ -13,13 +13,6 @@ namespace BARNEY_NS {
         devices(mcGrid->devices)
     {
       perLogical.resize(devices->numLogical);
-      for (auto device : *devices) {
-        PLD *pld = getPLD(device);
-        auto rtc = device->rtc;
-        SetActiveGPU forDuration(device);
-
-        pld->majorantsBuffer    = rtc->createBuffer(sizeof(float));
-      }
     }
 
     MajorantsGrid::~MajorantsGrid()
@@ -143,20 +136,21 @@ namespace BARNEY_NS {
       if (dims == this->dims)
         return;
       mcGrid->resize(dims);
-      this->dims = dims;
       size_t numCells = owl::common::reduce_mul(dims);
     
       for (auto device : *devices) {
         SetActiveGPU forDuration(device);
         PLD *pld = getPLD(device);
         auto rtc = device->rtc;
-        rtc->freeBuffer(pld->majorantsBuffer);
-      
-        pld->majorantsBuffer
-          = rtc->createBuffer(sizeof(float)*numCells);
+        auto *replacement = rtc->createBuffer(sizeof(float)*numCells);
+        if (pld->majorantsBuffer)
+          rtc->freeBuffer(pld->majorantsBuffer);
+        pld->majorantsBuffer = replacement;
       }
-      for (auto device : *devices) 
+      for (auto device : *devices)
         device->sync();
+      // A failed partial multi-device resize must remain retryable.
+      this->dims = dims;
     }
 
     /*! allocate memory for the given grid */
@@ -173,9 +167,9 @@ namespace BARNEY_NS {
         SetActiveGPU forDuration(device);
         PLD *pld = getPLD(device);
         auto rtc = device->rtc;
+        auto *replacement = rtc->createBuffer(sizeof(range1f)*numCells);
         rtc->freeBuffer(pld->scalarRangesBuffer);
-        pld->scalarRangesBuffer
-          = rtc->createBuffer(sizeof(range1f)*numCells);
+        pld->scalarRangesBuffer = replacement;
       }
       for (auto device : *devices) 
         device->sync();

@@ -58,6 +58,7 @@ namespace BARNEY_NS {
 
       helium::ChangeObserverPtr<SpatialField> m_field;
       const SpatialField *m_boundField{nullptr};
+      BNScalarField m_boundNativeField{nullptr};
 
       box3 m_bounds;
       box1 m_valueRange{0.f, 1.f};

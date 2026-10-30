@@ -9,6 +9,7 @@
 #include "native/Context.h"
 #include "native/common/Texture.h"
 #include "native/volume/MCGrid.cuh"
+#include "native/volume/NanoVDBHelpers.h"
 #include <nanovdb/HostBuffer.h>
 #include <nanovdb/GridHandle.h>
 
@@ -42,21 +43,16 @@ namespace BARNEY_NS {
       if (mcID.y >= mcGrid.dims.y) return;
       if (mcID.z >= mcGrid.dims.z) return;
 
-      vec3i lo = dd.indexBounds.lower+(vec3i(mcID)*dd.gridSize) / mcGrid.dims;
-      vec3i hi = dd.indexBounds.lower+(vec3i(mcID+1)*dd.gridSize) / mcGrid.dims;
-      nanovdb::CoordBBox bbox({lo.x,lo.y,lo.z},
-                              {hi.x+1,hi.y+1,hi.z+1});
-
-      GridT *gridPtr = (GridT *)dd.gridData;
-      auto acc = gridPtr->getAccessor();
-
-      range1f scalarRange;
-      for (nanovdb::CoordBBox::Iterator iter = bbox.begin(); iter; ++iter) {
-        float value = acc.getValue(*iter);
-        scalarRange.extend(value);
+      nanovdb::Vec3d lo, hi;
+      for (int axis = 0; axis < 3; ++axis) {
+        lo[axis] = double(mcGrid.gridOrigin[axis])
+          + double(mcID[axis]) * mcGrid.gridSpacing[axis];
+        hi[axis] = double(mcGrid.gridOrigin[axis])
+          + double(mcID[axis] + 1) * mcGrid.gridSpacing[axis];
       }
-      int cellIdx = mcID.x + mcGrid.dims.x * (mcID.y + mcGrid.dims.y * (mcID.z));
-      mcGrid.scalarRanges[cellIdx] = scalarRange;
+      const auto range = barney_nanovdb::scalarRange(
+        *(const GridT *)dd.gridData, nanovdb::Vec3dBBox(lo, hi));
+      mcGrid.scalarRanges[tid] = {range.lower, range.upper};
 #endif
     }
   
@@ -76,16 +72,36 @@ namespace BARNEY_NS {
     {
 #if BARNEY_HAVE_NANOVDB
       MCGrid::SP mcGrid = std::make_shared<MCGrid>(devices);
-      // Use one conservative macro cell. This avoids compiling and launching
-      // a large NanoVDB statistics kernel while preserving correct majorants.
-      vec3i mcDims(1);
-      mcGrid->resize(mcDims);
+      const auto dims = barney_nanovdb::macrocellDims(nanovdb::CoordBBox(
+        nanovdb::Coord(indexBounds.lower.x, indexBounds.lower.y, indexBounds.lower.z),
+        nanovdb::Coord(indexBounds.upper.x, indexBounds.upper.y, indexBounds.upper.z)));
+      const vec3i mcDims(dims[0], dims[1], dims[2]);
+      const size_t count = size_t(mcDims.x) * mcDims.y * mcDims.z;
       mcGrid->gridOrigin = worldBounds.lower;
       mcGrid->gridSpacing = worldBounds.size() * rcp(vec3f(mcDims));
+      for (int axis = 0; axis < 3; ++axis) {
+        const float spacing = mcGrid->gridSpacing[axis];
+        if (!std::isfinite(worldBounds.lower[axis])
+            || !std::isfinite(worldBounds.upper[axis])
+            || !(spacing > 0.f) || !std::isfinite(spacing)
+            || !std::isfinite(1.f / spacing))
+          throw std::runtime_error("Unrepresentable NanoVDB macrocell domain");
+      }
+      mcGrid->resize(mcDims);
 
       for (auto device : *devices) {
-        auto *buffer = mcGrid->getPLD(device)->scalarRangesBuffer;
-        buffer->upload(&valueRange, sizeof(valueRange));
+        SetActiveGPU forDuration(device);
+        switch (gridType) {
+#define BUILD_RANGES(BuildType, Suffix, EnumName)                       \
+          case nanovdb::GridType::EnumName:                             \
+            __rtc_launch(device->rtc, (NanoVDBData_computeMCs<BuildType>), \
+                         int((count + 127) / 128), 128,                 \
+                         mcGrid->getDD(device), getDD(device));         \
+            break;
+          BARNEY_NANOVDB_FLOAT_TYPES(BUILD_RANGES)
+#undef BUILD_RANGES
+          default: throw std::runtime_error("Unsupported NanoVDB grid type");
+        }
       }
       for (auto device : *devices)
         device->sync();
@@ -104,6 +120,7 @@ namespace BARNEY_NS {
       assert(sf->data);
       dd.nvdbGrid    = (NVDBGridT*)sf->data->getDD(device);
       dd.indexBounds = sf->indexBounds;
+      dd.filterMode = sf->filterMode;
 
       assert(dd.nvdbGrid);
       return dd;
@@ -127,12 +144,17 @@ namespace BARNEY_NS {
   
     VolumeAccel::SP NanoVDBData::createAccel(Volume *volume)
     {
+      // Allocation failures must reach adapter finalization, before any group
+      // can publish geometry from this shared field.
       switch (gridType) {
 #define CREATE_ACCEL(BuildType, Suffix, EnumName)                       \
         case nanovdb::GridType::EnumName: {                             \
           auto sampler = std::make_shared<NanoVDBDataSampler<BuildType>>(this); \
-          return std::make_shared<MCVolumeAccel<NanoVDBDataSampler<BuildType>>> \
+          auto accel = std::make_shared<MCVolumeAccel<NanoVDBDataSampler<BuildType>>> \
             (volume, createGeomType_NanoVDBMC_##Suffix, sampler);       \
+          accel->majorantsGrid = std::make_shared<MajorantsGrid>(getMCs()); \
+          accel->majorantsGrid->resize(mcGrid->dims);                  \
+          return accel;                                              \
         }
         BARNEY_NANOVDB_FLOAT_TYPES(CREATE_ACCEL)
 #undef CREATE_ACCEL
@@ -159,6 +181,16 @@ namespace BARNEY_NS {
       return false;
     }
 
+    bool NanoVDBData::set1i(const std::string &member, const int &value)
+    {
+      if (member == "filterMode") {
+        filterMode = value == BN_TEXTURE_NEAREST
+          ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR;
+        return true;
+      }
+      return false;
+    }
+
     // ==================================================================
     void NanoVDBData::commit() 
     {
@@ -171,12 +203,22 @@ namespace BARNEY_NS {
       data->download(dev0,nvHostBuffer.data());
     
       auto gridHandle = nanovdb::GridHandle<>(std::move(nvHostBuffer));
-      const nanovdb::GridMetaData *gridMetadata = gridHandle.gridMetaData();
-      const auto *floatGrid = gridHandle.grid<float>();
-      if (!floatGrid)
-        throw std::runtime_error("barney::NanoVDBData: expected Float grid");
-      valueRange = {floatGrid->tree().root().minimum(),
-                    floatGrid->tree().root().maximum()};
+      // Typed metadata follows the tree's root offset, not a fixed pointer cast.
+      const nanovdb::GridMetaData metadata = [&]() {
+        switch (gridHandle.gridType()) {
+#define READ_METADATA(BuildType, Suffix, EnumName)                     \
+          case nanovdb::GridType::EnumName: {                           \
+            const auto *grid = gridHandle.grid<BuildType>();            \
+            if (!grid) throw std::runtime_error("Invalid NanoVDB grid"); \
+            barney_nanovdb::validateMap(grid->map());                   \
+            return nanovdb::GridMetaData(*grid);                       \
+          }
+          BARNEY_NANOVDB_FLOAT_TYPES(READ_METADATA)
+#undef READ_METADATA
+          default: throw std::runtime_error("Unsupported NanoVDB grid type");
+        }
+      }();
+      const auto *gridMetadata = &metadata;
       auto boundsMin = gridMetadata->worldBBox().min();
       auto boundsMax = gridMetadata->worldBBox().max();
     
@@ -201,6 +243,9 @@ namespace BARNEY_NS {
         if (!supported)
           throw std::runtime_error
             ("barney::NanoVDBData: unsupported grid type");
+      // Construction failure must reach the adapter's commit exception handler,
+      // not surface later while building the world with a supposedly valid field.
+      mcGrid = buildMCs();
     }
 
   }

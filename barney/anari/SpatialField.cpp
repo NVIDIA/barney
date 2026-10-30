@@ -5,7 +5,8 @@
 // std
 #include <cfloat>
 #include <numeric>
-#include <optional>
+#include <limits>
+#include <memory>
 // ours
 #include "Array.h"
 #include "SpatialField.h"
@@ -15,6 +16,7 @@
 #include <nanovdb/HostBuffer.h>
 #include <nanovdb/NanoVDB.h>
 #include <nanovdb/math/Math.h>
+#include "native/volume/NanoVDBHelpers.h"
 
 // glm
 #include <glm/ext/vector_float3.hpp>
@@ -164,6 +166,8 @@ namespace BARNEY_NS {
     NanoVDBSpatialField::NanoVDBSpatialField(BarneyGlobalState *s)
       : SpatialField(s), m_data(this)
     {
+      // Even a parameterless first commit must diagnose missing data.
+      markParameterChanged();
     }
   
     void NanoVDBSpatialField::commitParameters()
@@ -172,38 +176,100 @@ namespace BARNEY_NS {
       m_data = getParamObject<Array1D>("data");
     }
   
-    void NanoVDBSpatialField::finalize()
+    void NanoVDBSpatialField::finalize() try
     {
+      m_valid = false;
+      m_empty = true;
+      m_bounds.invalidate();
+      // A new native field gives every dependent volume fresh acceleration.
+      cleanup();
+      if (!m_data) {
+        reportMessage(ANARI_SEVERITY_ERROR,
+                      "NanoVDB requires an ARRAY1D UINT8 data parameter");
+        return;
+      }
       ANARIDataType format = m_data->elementType();
       if (format != ANARI_UINT8) {
-        reportMessage(ANARI_SEVERITY_WARNING,
+        reportMessage(ANARI_SEVERITY_ERROR,
                       "invalid data array type encountered "
                       "in NanoVDB spatial field(%s)",
                       anari::toString(format));
         return;
       }
 
-      // Data might not be aligned, make sure we get something that works for
-      // nanovdb.
-      auto hostbuffer = nanovdb::HostBuffer::create(m_data->size());
-      std::memcpy(hostbuffer.data(), m_data->data(), m_data->size());
-
-      auto gridHandle = nanovdb::GridHandle<>(std::move(hostbuffer));
-      std::optional<nanovdb::GridMetaData> m_gridMetadata;
-      m_gridMetadata = *gridHandle.gridMetaData();
-
-      if (gridHandle.gridCount() != 1) {
-        reportMessage(ANARI_SEVERITY_WARNING,
-                      "VisRTX NanoVDB support's a single grid per file");
+      if (m_data->size() < sizeof(nanovdb::GridData)) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Truncated NanoVDB header");
         return;
       }
 
-      auto boundsMin = m_gridMetadata->worldBBox().min();
-      auto boundsMax = m_gridMetadata->worldBBox().max();
+      nanovdb::GridData header;
+      std::memcpy(&header, m_data->data(), sizeof(header));
+      if (!header.isValid()) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Invalid NanoVDB grid header");
+        return;
+      }
+      if (!header.mVersion.isCompatible()) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Incompatible NanoVDB version");
+        return;
+      }
+      const size_t rootSize = barney_nanovdb::fixedRootSize(header.mGridType);
+      if (!rootSize) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Unsupported NanoVDB grid type");
+        return;
+      }
+      if (header.mGridCount != 1 || header.mGridIndex != 0) {
+        reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB requires one grid");
+        return;
+      }
+      if (header.mGridSize > m_data->size()
+          || header.mGridSize < sizeof(nanovdb::GridData) + sizeof(nanovdb::TreeData)) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Truncated NanoVDB payload");
+        return;
+      }
+
+      // HostBuffer adds alignment padding; pointer offsets must be representable.
+      if (header.mGridSize > std::numeric_limits<size_t>::max()
+                               - NANOVDB_DATA_ALIGNMENT
+          || header.mGridSize > uint64_t(std::numeric_limits<ptrdiff_t>::max())) {
+        reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB allocation size overflow");
+        return;
+      }
+
+      nanovdb::TreeData tree;
+      std::memcpy(&tree, static_cast<const char *>(m_data->data()) + sizeof(header),
+                  sizeof(tree));
+      const auto rootOffset = tree.mNodeOffset[3];
+      const auto treeBytes = header.mGridSize - sizeof(header);
+      if (rootOffset < int64_t(sizeof(tree))
+          || uint64_t(rootOffset) % NANOVDB_DATA_ALIGNMENT != 0
+          || uint64_t(rootOffset) > treeBytes
+          || rootSize > treeBytes - uint64_t(rootOffset)) {
+        reportMessage(ANARI_SEVERITY_ERROR, "Truncated or misaligned NanoVDB root");
+        return;
+      }
+
+      barney_nanovdb::validateMap(header.mMap);
+      if (tree.mVoxelCount == 0) {
+        m_valid = true;
+        return;
+      }
+
+      nanovdb::CoordBBox indexBounds;
+      std::memcpy(&indexBounds, static_cast<const char *>(m_data->data())
+                  + sizeof(header) + rootOffset, sizeof(indexBounds));
+      barney_nanovdb::macrocellDims(indexBounds);
+
+      // ANARI byte arrays need not have NanoVDB alignment.
+      auto hostbuffer = nanovdb::HostBuffer::create(header.mGridSize);
+      std::memcpy(hostbuffer.data(), m_data->data(), header.mGridSize);
+
+      auto gridHandle = nanovdb::GridHandle<>(std::move(hostbuffer));
+      auto boundsMin = header.mWorldBBox.min();
+      auto boundsMax = header.mWorldBBox.max();
       (box3&)m_bounds
         = box3(math::float3(boundsMin[0], boundsMin[1], boundsMin[2]),
                math::float3(boundsMax[0], boundsMax[1], boundsMax[2]));
-      auto voxelSize = m_gridMetadata->voxelSize();
+      auto voxelSize = header.mVoxelSize;
       (glm::vec3&)m_voxelSize
         = glm::vec3(voxelSize[0], voxelSize[1], voxelSize[2]);
 
@@ -213,16 +279,32 @@ namespace BARNEY_NS {
       int slot = deviceState()->slot;
       auto context = deviceState()->tether->context;
     
-      BNScalarField sf = getBarneyScalarField();
-      BNData bd = bnDataCreate(context,slot,
-                               BN_UINT8,
-                               gridHandle.size(),
-                               gridHandle.data());
-      assert(bd);
-      assert(sf);
-      bnSetData(sf,"data",bd);
-      bnRelease(bd);
+      if (!m_bnField)
+        m_bnField = createBarneyScalarField();
+      BNScalarField sf = m_bnField;
+      std::unique_ptr<_BNData, decltype(&bnRelease)> bd(
+          bnDataCreate(context, slot, BN_UINT8,
+                       gridHandle.size(), gridHandle.data()), &bnRelease);
+      if (!bd)
+        throw std::runtime_error("NanoVDB data allocation failed");
+      bnSetData(sf, "data", bd.get());
+      bnSet1i(sf, "filterMode", m_filter == "nearest"
+          ? BN_TEXTURE_NEAREST : BN_TEXTURE_LINEAR);
       bnCommit(sf);
+      m_empty = false;
+      m_valid = true;
+    }
+    catch (const std::exception &e) {
+      invalidate(e.what());
+    }
+
+    void NanoVDBSpatialField::invalidate(const char *reason)
+    {
+      m_valid = false;
+      m_empty = true;
+      cleanup();
+      m_bounds.invalidate();
+      reportMessage(ANARI_SEVERITY_ERROR, "NanoVDB update failed: %s", reason);
     }
 
     BNScalarField NanoVDBSpatialField::createBarneyScalarField() const
@@ -231,7 +313,8 @@ namespace BARNEY_NS {
       auto context = deviceState()->tether->context;
 
       BNScalarField sf = bnScalarFieldCreate(context, slot, "NanoVDB");
-      assert(sf);
+      if (!sf)
+        throw std::runtime_error("NanoVDB field allocation failed");
       return sf;
     }
 
@@ -242,7 +325,7 @@ namespace BARNEY_NS {
   
     bool NanoVDBSpatialField::isValid() const
     {
-      return m_data && m_data->elementType() == ANARI_UINT8;
+      return m_valid;
     }
   
     // UnstructuredField //
