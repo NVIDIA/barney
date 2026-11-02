@@ -23,10 +23,6 @@ namespace BARNEY_NS {
 
 #define USE_MIS 1
 
-#if !BARNEY_USE_MULTI_SCATTERING
-#define SCI_VIS_MODE 1
-#endif
-
 #define CLAMP_F_R 13.f
 
 
@@ -778,7 +774,6 @@ namespace BARNEY_NS {
         return;
       
       if (scatterResult.type == ScatterResult::VOLUME) {
-#if BARNEY_USE_MULTI_SCATTERING
         if (!renderer.volumeMultiScatter) {
           ray.tMax = -1.f;
           return;
@@ -788,41 +783,17 @@ namespace BARNEY_NS {
           return;
         }
         state.numVolumeBounces = state.numVolumeBounces + 1;
-#else
-#if SCI_VIS_MODE
-        // sci vis mode: volumes do shadow, but nothing more
-        ray.tMax = -1.f;
-        return;
-#else
-        // treat volume scatter like a diffuse scatter.
-        scatterResult.type = ScatterResult::DIFFUSE;
-#endif
-#endif
       }
 
-      if (
-#if BARNEY_USE_MULTI_SCATTERING
-          scatterResult.type == ScatterResult::DIFFUSE
-#else
-          scatterResult.type == ScatterResult::DIFFUSE ||
-          scatterResult.type == ScatterResult::VOLUME
-#endif
-          )
-        {
-          if (state.numDiffuseBounces >= MAX_DIFFUSE_BOUNCES) {
-            ray.tMax = -1.f;
-            return;
-          }
-          state.numDiffuseBounces = state.numDiffuseBounces + 1;
+      if (scatterResult.type == ScatterResult::DIFFUSE) {
+        if (state.numDiffuseBounces >= MAX_DIFFUSE_BOUNCES) {
+          ray.tMax = -1.f;
+          return;
         }
+        state.numDiffuseBounces = state.numDiffuseBounces + 1;
+      }
       ray.isSpecular = (scatterResult.type == ScatterResult::SPECULAR);
       
-      if (dbg)
-        printf("offsetting into sign %f, direction %f %f %f\n",
-               scatterResult.offsetDirection,
-               frontFacingSurfaceOffset.x,
-               frontFacingSurfaceOffset.y,
-               frontFacingSurfaceOffset.z); 
       ray.org
         = dg.P + scatterResult.offsetDirection * offsetEpsilon*frontFacingSurfaceOffset;
       // #ifdef CLAMP_F_R

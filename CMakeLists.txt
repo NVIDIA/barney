@@ -272,13 +272,15 @@ option(BARNEY_USE_MULTI_SCATTERING
   "Enable volumetric multi-scattering (HG phase, volume bounce tracking)"
   OFF)
 
-target_compile_definitions(barney_config INTERFACE
-  BARNEY_HAVE_NANOVDB=$<BOOL:${BARNEY_HAVE_NANOVDB}>
-  BARNEY_USE_MULTI_SCATTERING=$<BOOL:${BARNEY_USE_MULTI_SCATTERING}>)
-
-if (BARNEY_USE_MULTI_SCATTERING)
-  message("#barney: BARNEY_USE_MULTI_SCATTERING=ON")
-endif()
+# iw - moved this to barneyConfig.h.in
+# 
+#target_compile_definitions(barney_config INTERFACE
+#  BARNEY_HAVE_NANOVDB=$<BOOL:${BARNEY_HAVE_NANOVDB}>
+#  BARNEY_USE_MULTI_SCATTERING=$<BOOL:${BARNEY_USE_MULTI_SCATTERING}>)
+#
+#if (BARNEY_USE_MULTI_SCATTERING)
+#  message("#barney: BARNEY_USE_MULTI_SCATTERING=ON")
+#endif()
 
 
 # ------------------------------------------------------------------

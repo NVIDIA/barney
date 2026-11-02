@@ -263,7 +263,7 @@ namespace BARNEY_NS {
         }
       }
 
-      if (channels & BN_FB_DEPTH)
+      if (channels & BN_FB_DEPTH) 
         gatherAuxChannel(BN_FB_DEPTH);
       if (channels & BN_FB_PRIMID)
         gatherAuxChannel(BN_FB_PRIMID);

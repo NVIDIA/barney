@@ -642,7 +642,6 @@ namespace BARNEY_NS {
                 
              vec3f P_obj = obj_org + tRange.upper * obj_dir;
              vec3f P = ti.transformPointFromObjectToWorldSpace(P_obj);
-#if BARNEY_USE_MULTI_SCATTERING
              vec3f tint = getPos(sample);
              vec3f emission = vec3f(0.f);
              float hitScatteringAlbedo = self.volume.scatteringAlbedo;
@@ -669,11 +668,6 @@ namespace BARNEY_NS {
                                 self.volume.anisotropy,
                                 hitScatteringAlbedo);
              }
-#else
-             ray.setVolumeHit(P,
-                              tRange.upper,
-                              getPos(sample));
-#endif
 
              // Write hit IDs for AOV channels on first non-transparent voxel
              const OptixGlobals &globals = OptixGlobals::get(ti);

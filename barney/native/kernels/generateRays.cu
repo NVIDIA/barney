@@ -207,9 +207,7 @@ namespace BARNEY_NS {
       }
       // ray.rngSeed     = rand.next;//state;
       state.numDiffuseBounces = 0;
-#if BARNEY_USE_MULTI_SCATTERING
       state.numVolumeBounces = 0;
-#endif
       if (0 && ray.dbg())
         printf("-------------------------------------------------------\n");
              
