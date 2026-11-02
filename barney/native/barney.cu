@@ -723,7 +723,7 @@ namespace BARNEY_NS {
                            uint32_t channels)
   {
     LOG_API_ENTRY;
-    checkGet(fb)->resize(colorFormat,vec2i{sizeX,sizeY},channels);
+    checkGet(fb)->resize(colorFormat,vec2i{sizeX,sizeY},channels,/*isaltframe*/0);
   }
 
   BARNEY_API

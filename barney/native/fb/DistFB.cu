@@ -479,6 +479,7 @@ namespace BARNEY_NS {
       if (isOwner) {
         Device *device = getDenoiserDevice();
         SetActiveGPU forDuration(device);
+        if (!isAltFrame) {
         if (gatheredTilesOnOwner.auxChannelTiles.depth) {
           device->rtc->freeMem(gatheredTilesOnOwner.auxChannelTiles.depth);
           gatheredTilesOnOwner.auxChannelTiles.depth = 0;
@@ -511,6 +512,7 @@ namespace BARNEY_NS {
           device->rtc->freeMem(gatheredTilesOnOwner.compressedNormalTiles);
           gatheredTilesOnOwner.compressedNormalTiles = 0;
         }
+        }
       }
     }
 
@@ -519,11 +521,12 @@ namespace BARNEY_NS {
   
     void DistFB::resize(BNDataType colorFormat,
                         vec2i size,
-                        uint32_t channels)
+                        uint32_t channels,
+                        bool isAltFrame)
     {
       freeChannelData();
       
-      FrameBuffer::resize(colorFormat, size, channels);
+      FrameBuffer::resize(colorFormat, size, channels, isAltFrame);
 
       // ------------------------------------------------------------------
       /* check if we need to have a normal channelf ro deonising (on
@@ -549,6 +552,7 @@ namespace BARNEY_NS {
           = tiledFB->numActiveTilesThisGPU;
       
         auto pld = getPLD(device);
+        if (!isAltFrame) {
         pld->localSend.compressedColorTiles
           = (CompressedColorTile*)device->rtc->allocMem
           (tiledFB->numActiveTilesThisGPU*sizeof(CompressedColorTile));
@@ -556,6 +560,7 @@ namespace BARNEY_NS {
           pld->localSend.compressedNormalTiles
             = (CompressedNormalTile*)device->rtc->allocMem
             (tiledFB->numActiveTilesThisGPU*sizeof(CompressedNormalTile));
+        }
       }
     
       std::vector<MPI_Request> recv_requests(ownerGather.numGPUs);
@@ -608,7 +613,8 @@ namespace BARNEY_NS {
         gatheredTilesOnOwner.numActiveTiles = sumTiles;
 
         Device *frontDev = getDenoiserDevice();
-      
+
+        if (!isAltFrame) {
         gatheredTilesOnOwner.compressedColorTiles
           = (CompressedColorTile *)frontDev->rtc->allocMem
           (sumTiles*sizeof(*gatheredTilesOnOwner.compressedColorTiles));
@@ -633,7 +639,7 @@ namespace BARNEY_NS {
         if (channels & BN_FB_MOTION)
           gatheredTilesOnOwner.auxChannelTiles.motion
             = (MotionChannelTile*)frontDev->rtc->allocMem(sumTiles*sizeof(MotionChannelTile));
-
+        }
         gatheredTilesOnOwner.tileDescs
           = (TileDesc *)frontDev->rtc->allocMem
           (sumTiles*sizeof(*gatheredTilesOnOwner.tileDescs));

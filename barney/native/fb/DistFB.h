@@ -80,7 +80,8 @@ namespace BARNEY_NS {
         not set do not have to be stored or even computed */
       void resize(BNDataType colorFormat,
                   vec2i size,
-                  uint32_t channels) override;
+                  uint32_t channels,
+                  bool isAltFrame) override;
 
       /*! gather color (and optionally, if not null) linear normal, from
         all GPUs (and ranks). lienarColor and lienarNormal are

@@ -22,7 +22,8 @@ namespace BARNEY_NS {
     
     void LocalFB::resize(BNDataType colorFormat,
                          vec2i size,
-                         uint32_t channels)
+                         uint32_t channels,
+                         bool isAltFrame)
     {
       Device *frontDev = getDenoiserDevice();
       for (auto device : *devices) {
@@ -30,7 +31,7 @@ namespace BARNEY_NS {
       }
     
       auto rtc = frontDev->rtc;
-      FrameBuffer::resize(colorFormat,size,channels);
+      FrameBuffer::resize(colorFormat,size,channels,isAltFrame);
     
       if (onOwner.tileDescs)
         rtc->freeMem(onOwner.tileDescs);

@@ -30,8 +30,9 @@ namespace BARNEY_NS {
         are set may get queried by the application (ie those that are
         not set do not have to be stored or even computed */
       virtual void resize(BNDataType colorFormat,
-                  vec2i size,
-                  uint32_t channels);
+                          vec2i size,
+                          uint32_t channels,
+                          bool isAltFrame);
       virtual void resetAccumulation();
 
       void freeResources();
@@ -124,6 +125,11 @@ namespace BARNEY_NS {
         numPixels/2 when upscaling) */
       vec2i      renderPixels = {-1,-1};
 
+      /*! if set, then this is a 'altFrame' in which all tiles of the
+          tiledfb get rendered like for any other frame, but which is
+          NOT reconstituted -- and thus, not mappable -- on rank 0 */
+      bool isAltFrame = 0;
+      
       Device *getDenoiserDevice() const;
 
       /*! gather color (and normal, if required for denoising),
