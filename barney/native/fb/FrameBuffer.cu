@@ -221,6 +221,8 @@ namespace BARNEY_NS {
 
     void FrameBuffer::finalizeFrame()
     {
+      if (isAltFrame) return;
+      
       // make sure all devices are done with rendering
       context->syncCheckAll();
       

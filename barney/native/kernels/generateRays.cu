@@ -262,7 +262,7 @@ namespace BARNEY_NS {
         return fromEnv && std::stoi(fromEnv);
       };
       static bool enablePerRayDebug = getPerRayDebug();
-      
+
       assert(fb);
       int accumID=fb->accumID;
       // ------------------------------------------------------------------

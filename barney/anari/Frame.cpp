@@ -210,6 +210,7 @@ namespace BARNEY_NS {
       auto model = m_world->makeCurrent();
 
       if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.depth != ANARI_UNKNOWN
+          && !m_isAltFrame
           && !m_didMapChannel.depth)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a depth buffer request, but never mapped it");
