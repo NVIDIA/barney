@@ -100,7 +100,8 @@ namespace BARNEY_NS {
         ray.bsdfType = hit->bsdfType;
         ray.hitBSDF  =  hit->hitBSDF;
         ray.P        =  hit->P;
-        ray.N        =  hit->N;
+        ray.shadingNormal = hit->shadingNormal;
+        ray.geometricNormal = hit->geometricNormal;
       }
       rayQueueThisRank[tid] = ray;
 #endif

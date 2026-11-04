@@ -29,8 +29,13 @@ namespace BARNEY_NS {
         vec3f radiance;
         /*! distance to this light sample */
         float distance;
-        /*! pdf of sample that was chosen */
+        // Conditional solid-angle density (zero for discrete directions).
         float pdf = 0.f;
+        // Estimator denominator is selectionProbability * pdf for continuous
+        // directions, or selectionProbability alone for delta directions.
+        float selectionProbability = 0.f;
+        bool delta = false;
+        bool environment = false;
       };
   
     

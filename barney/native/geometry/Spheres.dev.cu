@@ -85,7 +85,7 @@ namespace BARNEY_NS {
         hitData.worldPosition   = worldP;
 
         hitData.objectPosition  = objectP;
-        hitData.worldNormal     = normalize(worldN);
+        hitData.worldShadingNormal     = normalize(worldN);
         hitData.objectNormal    = make_vec4f(normalize(objectN));
         hitData.primID          = primID;
         hitData.instID          = instID;
@@ -233,7 +233,7 @@ namespace BARNEY_NS {
         hitData.worldPosition   = worldP;
 
         hitData.objectPosition  = objectP;
-        hitData.worldNormal     = normalize(worldN);
+        hitData.worldShadingNormal     = normalize(worldN);
         hitData.objectNormal    = make_vec4f(normalize(objectN));
         hitData.primID          = primID;
         hitData.instID          = instID;

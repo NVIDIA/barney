@@ -521,7 +521,7 @@ namespace BARNEY_NS {
     
       HitAttributes hitData;
       hitData.worldPosition   = ti.transformPointFromObjectToWorldSpace(osP);
-      hitData.worldNormal     = normalize(n);
+      hitData.worldShadingNormal     = normalize(n);
       hitData.objectPosition  = osP;
       hitData.objectNormal    = make_vec4f(normalize(osN));
       hitData.primID          = primID;
