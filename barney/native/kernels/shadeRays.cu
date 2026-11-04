@@ -774,8 +774,10 @@ namespace BARNEY_NS {
       if (dbg)
         printf("scatter result.valid ? %i\n",
                int(scatterResult.valid()));
-      if (!scatterResult.valid() || scatterResult.pdf <= 1e-6f)
+      if (!scatterResult.valid() || scatterResult.pdf <= 1e-6f) {
+        ray.tMax = -1.f;
         return;
+      }
       
       if (scatterResult.type == ScatterResult::VOLUME) {
 #if BARNEY_USE_MULTI_SCATTERING
