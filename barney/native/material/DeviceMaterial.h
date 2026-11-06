@@ -26,6 +26,9 @@ namespace BARNEY_NS {
 
 #if RTC_DEVICE_CODE
       inline __rtc_device
+      bool usesTangentFrame() const;
+
+      inline __rtc_device
       PackedBSDF createBSDF(const HitAttributes &hitData,
                             const Sampler::DD *samplers,
                             bool dbg=false) const;
@@ -59,6 +62,15 @@ namespace BARNEY_NS {
     };
 
 #if RTC_DEVICE_CODE
+    inline __rtc_device
+    bool DeviceMaterial::usesTangentFrame() const
+    {
+      return type == TYPE_AnariPBR
+        && (anariPBR.normal.type == PossiblyMappedParameter::SAMPLER
+            || anariPBR.clearcoatNormal.type
+                 == PossiblyMappedParameter::SAMPLER);
+    }
+
     inline __rtc_device
     PackedBSDF DeviceMaterial::createBSDF(const HitAttributes &hitData,
                                           const Sampler::DD *samplers,
