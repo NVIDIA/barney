@@ -33,7 +33,7 @@ namespace BARNEY_NS {
       float m_ambientRadiance{0.8f};
       bool m_crosshairs{false};
       bool m_denoise{true};
-      bool m_fadeOutDenoiser{true};
+      bool m_fadeOutDenoiser{false};
       bool m_upscale{false};
       anari::math::float4 m_background{0.f, 0.f, 0.f, 1.f};
       anari::math::float4 m_cutPlane{0.f, 0.f, 0.f, -1e30f};

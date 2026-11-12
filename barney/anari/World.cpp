@@ -60,7 +60,8 @@ namespace BARNEY_NS {
         box3 bounds;
         bounds.invalidate();
         std::for_each(m_instances.begin(), m_instances.end(), [&](auto *inst) {
-          bounds.insert(inst->bounds());
+          if (inst && inst->isValid())
+            bounds.insert(inst->bounds());
         });
         std::memcpy(ptr, &bounds, sizeof(bounds));
         return true;
@@ -120,7 +121,9 @@ namespace BARNEY_NS {
         std::for_each(m_instanceData->handlesBegin(),
                       m_instanceData->handlesEnd(),
                       [&](auto *o) {
-                        if (o && o->isValid())
+                        // Keep invalid instances so a later transform edit
+                        // can make them renderable without replacing the array.
+                        if (o)
                           m_instances.push_back((Instance *)o);
                       });
       }
@@ -212,7 +215,7 @@ namespace BARNEY_NS {
       std::map<const Group *, BNGroup> groupDedup;
 
       for (auto inst : m_instances) {
-        if (!inst) continue;
+        if (!inst || !inst->isValid()) continue;
         const Group *ag = inst->group();
         if (!ag) continue;
 
@@ -263,8 +266,7 @@ namespace BARNEY_NS {
         a.clear();
 
       for (auto inst : m_instances) {
-        if (!inst) continue;
-        if (!inst->group()) continue;
+        if (!inst || !inst->isValid()) continue;
 
         BNTransform bt;
         inst->writeTransform(&bt);
@@ -293,7 +295,7 @@ namespace BARNEY_NS {
     {
       bool anyMotion = false;
       for (auto inst : m_instances) {
-        if (inst && inst->group() && inst->hasMotionTransform()) {
+        if (inst && inst->isValid() && inst->hasMotionTransform()) {
           anyMotion = true;
           break;
         }
@@ -307,7 +309,7 @@ namespace BARNEY_NS {
       std::vector<BNTransform> deltas;
       deltas.reserve(m_instances.size());
       for (auto inst : m_instances) {
-        if (!inst || !inst->group()) continue;
+        if (!inst || !inst->isValid()) continue;
         BNTransform bt;
         inst->writeMotionDelta(&bt);
         deltas.push_back(bt);

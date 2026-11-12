@@ -521,7 +521,7 @@ namespace BARNEY_NS {
     
       HitAttributes hitData;
       hitData.worldPosition   = ti.transformPointFromObjectToWorldSpace(osP);
-      hitData.worldNormal     = normalize(n);
+      hitData.worldShadingNormal     = normalize(n);
       hitData.objectPosition  = osP;
       hitData.objectNormal    = make_vec4f(normalize(osN));
       hitData.primID          = primID;
@@ -643,17 +643,22 @@ namespace BARNEY_NS {
              vec3f P_obj = obj_org + tRange.upper * obj_dir;
              vec3f P = ti.transformPointFromObjectToWorldSpace(P_obj);
              vec3f tint = getPos(sample);
+             // Emission is added at the collision itself, so it does
+             // not depend on volume bounces (multi-scattering).
              vec3f emission = vec3f(0.f);
-             float hitScatteringAlbedo = self.volume.scatteringAlbedo;
              if (self.volume.principled.enabled) {
                float scalar = self.volume.sampleScalar(P_obj, dbg);
-               hitScatteringAlbedo = 1.f;
                emission
                  = principledCollisionEmission(scalar,
                                                self.volume.emissionXf,
                                                self.volume.emissionXfActive,
                                                self.volume.principled);
              }
+#if BARNEY_USE_MULTI_SCATTERING
+             float hitScatteringAlbedo
+               = self.volume.principled.enabled
+               ? 1.f
+               : self.volume.scatteringAlbedo;
              if (reduce_max(emission) > 0.f) {
                ray.setVolumeHitWithEmission(P,
                                             tRange.upper,
@@ -668,6 +673,23 @@ namespace BARNEY_NS {
                                 self.volume.anisotropy,
                                 hitScatteringAlbedo);
              }
+#else
+             if (reduce_max(emission) > 0.f) {
+               // isotropic HG with SimplePhase's default 0.7 reflectance:
+               // same direct lighting as setVolumeHit(P,t,tint), plus
+               // the emission.
+               ray.setVolumeHitWithEmission(P,
+                                            tRange.upper,
+                                            tint,
+                                            /*anisotropy*/0.f,
+                                            /*scatteringAlbedo*/.7f,
+                                            emission);
+             } else {
+               ray.setVolumeHit(P,
+                                tRange.upper,
+                                tint);
+             }
+#endif
 
              // Write hit IDs for AOV channels on first non-transparent voxel
              const OptixGlobals &globals = OptixGlobals::get(ti);

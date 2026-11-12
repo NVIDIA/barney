@@ -14,6 +14,9 @@ option(BARNEY_BACKEND_HIP    "Build HIP Backend"           OFF)
 option(BARNEY_BACKEND_HIPRT  "Build HIPRT Backend"         OFF)
 option(BARNEY_MPI            "Enable MPI Support"          OFF)
 
+option(BARNEY_BUILD_BSDF_TESTS "Build numerical packed BSDF quality tests" OFF)
+option(BARNEY_BUILD_TANGENT_TESTS "Build numerical tangent generation tests" OFF)
+
 if (NOT (BARNEY_BACKEND_CPU OR BARNEY_BACKEND_CUDA 
          OR BARNEY_BACKEND_OPTIX OR BARNEY_BACKEND_HIP OR BARNEY_BACKEND_HIPRT))
   message(FATAL_ERROR "No back-end selected, nothing will be built."
@@ -54,6 +57,10 @@ if (CMAKE_BUILD_TYPE)
 endif()
 include(GNUInstallDirs)
 include(CheckLanguage)
+
+if (BARNEY_BUILD_BSDF_TESTS OR BARNEY_BUILD_TANGENT_TESTS)
+  enable_testing()
+endif()
 
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
@@ -268,9 +275,10 @@ include(CMakePackageConfigHelpers)
 
 # ==================================================================
 set(BARNEY_HAVE_NANOVDB ON)
-option(BARNEY_USE_MULTI_SCATTERING
-  "Enable volumetric multi-scattering (HG phase, volume bounce tracking)"
-  OFF)
+set(BARNEY_USE_MULTI_SCATTERING ON)
+#option(BARNEY_USE_MULTI_SCATTERING
+#  "Enable volumetric multi-scattering (HG phase, volume bounce tracking)"
+#  OFF)
 
 # iw - moved this to barneyConfig.h.in
 # 

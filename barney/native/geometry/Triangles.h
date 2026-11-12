@@ -5,6 +5,7 @@
 #pragma once
 
 #include "native/geometry/Geometry.h"
+#include <array>
 
 namespace BARNEY_NS {
   namespace native {
@@ -41,6 +42,7 @@ namespace BARNEY_NS {
       // ------------------------------------------------------------------
       /*! @{ parameter set/commit interface */
       void commit() override;
+      void writeDD(Triangles::DD &dd, Device *device);
       bool setData(const std::string &member,
                    const Data::SP &value) override;
       /*! @} */
@@ -48,6 +50,11 @@ namespace BARNEY_NS {
 
       PODData::SP vertices;
       PODData::SP indices;
+
+    private:
+      std::array<PODData::SP,8> tangentInputs;
+      std::array<uint64_t,8> tangentRevisions{};
+      std::vector<rtc::Buffer *> tangentBuffers;
     };
 
   }

@@ -56,6 +56,8 @@ namespace BARNEY_NS {
       math::mat4  m_transform;
       math::mat4  m_prevTransform;
       bool        m_hasPrevTransform = false;
+      bool        m_transformValid = true;
+      bool        m_previousTransformValid = true;
       helium::IntrusivePtr<Group> m_group;
       const Group *m_previousGroup = nullptr;
     };

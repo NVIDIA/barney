@@ -201,7 +201,7 @@ namespace BARNEY_NS {
 
       // ----------- per vertex -----------
       if (member == "vertex.attribute0") {
-        attributes.attribute[0].perVertex = value->as<PODData>();
+        attributes.attribute[0].perVertex = value ? value->as<PODData>() : nullptr;
         return true;
       }
       if (member == "vertex.attribute1") {
@@ -221,17 +221,17 @@ namespace BARNEY_NS {
         return true;
       }
       if (member == "vertex.normal") {
-        attributes.normalAttribute.perVertex = value->as<PODData>();
+        attributes.normalAttribute.perVertex = value ? value->as<PODData>() : nullptr;
         return true;
       }
       if (member == "vertex.tangent") {
-        attributes.tangentAttribute.perVertex = value->as<PODData>();
+        attributes.tangentAttribute.perVertex = value ? value->as<PODData>() : nullptr;
         return true;
       }
 
       // ----------- per face-varying -----------
       if (member == "faceVarying.attribute0") {
-        attributes.attribute[0].faceVarying = value->as<PODData>();
+        attributes.attribute[0].faceVarying = value ? value->as<PODData>() : nullptr;
         return true;
       }
       if (member == "faceVarying.attribute1") {
@@ -251,11 +251,11 @@ namespace BARNEY_NS {
         return true;
       }
       if (member == "faceVarying.normal") {
-        attributes.normalAttribute.faceVarying = value->as<PODData>();
+        attributes.normalAttribute.faceVarying = value ? value->as<PODData>() : nullptr;
         return true;
       }
       if (member == "faceVarying.tangent") {
-        attributes.tangentAttribute.faceVarying = value->as<PODData>();
+        attributes.tangentAttribute.faceVarying = value ? value->as<PODData>() : nullptr;
         return true;
       }
     

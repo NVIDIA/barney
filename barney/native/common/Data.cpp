@@ -267,6 +267,7 @@ namespace BARNEY_NS {
 
     void PODData::set(const void *_items, size_t count)
     {
+      ++revision;
       this->count = count;
       this->numBytes = count*owlSizeOf(type);
       for (auto device : *devices) {

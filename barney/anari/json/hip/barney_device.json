@@ -76,7 +76,7 @@
             "ANARI_BOOL"
           ],
           "tags": [],
-          "default": true,
+          "default": false,
           "description": "fade out denoiser during accumulation"
         },
         {
