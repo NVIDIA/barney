@@ -207,9 +207,7 @@ namespace BARNEY_NS {
       }
       // ray.rngSeed     = rand.next;//state;
       state.numDiffuseBounces = 0;
-#if BARNEY_USE_MULTI_SCATTERING
       state.numVolumeBounces = 0;
-#endif
       if (0 && ray.dbg())
         printf("-------------------------------------------------------\n");
              
@@ -238,7 +236,8 @@ namespace BARNEY_NS {
         vec4f v = rtc::tex2D<vec4f>(renderer.bgTexture, bg_u, bg_v);
         bgColor = v;
       }
-      (vec4f&)ray.missColor = bgColor;
+      state.miss.color = (const vec3f &)bgColor;
+      state.miss.alpha = bgColor.w;
       if (1 && ray.dbg()) printf("== spawn ray has bg tex %p bg color %f %f %f %f\n",
                                (void*)renderer.bgTexture,
                                bgColor.x,
@@ -264,7 +263,7 @@ namespace BARNEY_NS {
         return fromEnv && std::stoi(fromEnv);
       };
       static bool enablePerRayDebug = getPerRayDebug();
-      
+
       assert(fb);
       int accumID=fb->accumID;
       // ------------------------------------------------------------------

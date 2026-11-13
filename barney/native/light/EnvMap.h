@@ -66,10 +66,6 @@ namespace BARNEY_NS {
       struct PLD {
         rtc::Buffer  *cdf_y = 0;
         rtc::Buffer  *allCDFs_x = 0;
-      
-        rtc::ComputeKernel2D *computeWeights_xy;
-        rtc::ComputeKernel1D *computeCDFs_doLine;
-        rtc::ComputeKernel1D *normalize_cdf_y;
       };
 
       PLD *getPLD(Device *);

@@ -15,8 +15,6 @@
 namespace BARNEY_NS {
   namespace native {
 
-// #define PROFILE 1
-    
     void Context::traceRaysLocally(GlobalModel *globalModel,
                                    uint32_t rngSeed,
                                    bool needHitIDs)
@@ -27,21 +25,8 @@ namespace BARNEY_NS {
       OptixGlobals dd;
       int slotIdx = 0;
 
-#if PROFILE
-      typedef  std::chrono::time_point<std::chrono::high_resolution_clock> time_t;
-      
-      static time_t t_launch[2];
-      static time_t t_launched[2];
-      static time_t t_sync[2]; 
-      static time_t t_synched[2];
-      auto t0 = std::chrono::high_resolution_clock::now();
-#endif
-      
-      int which = 0;
-      which = -1;
       for (auto model : globalModel->modelSlots) {
         for (auto device : *model->devices) {
-          ++which; 
           SetActiveGPU forDuration(device);
           auto ctx     = model->ldgContext;
           dd.rays      = device->rayQueue->traceAndShadeReadQueue.rays;
@@ -70,18 +55,11 @@ namespace BARNEY_NS {
             int bs = 256;
             int nb = divRoundUp(dd.numRays,bs);
 
-#if PROFILE
-            t_launch[which] = std::chrono::high_resolution_clock::now();
-#endif
-
             if (nb)
               device->traceRays->launch(/* bs,nb intentionally inverted:
                                            always have 1024 in width: */
                                         vec2i(bs,nb),
                                         &dd);
-#if PROFILE
-            t_launched[which] = std::chrono::high_resolution_clock::now();
-#endif
           }
         }
         slotIdx++;
@@ -90,34 +68,15 @@ namespace BARNEY_NS {
       // ------------------------------------------------------------------
       // ... and sync 'til all are done
       // ------------------------------------------------------------------
-      which = -1;
       for (auto device : *devices) {
-        ++which;
-#if PROFILE
-        t_sync[which] = std::chrono::high_resolution_clock::now();
-#endif
         SetActiveGPU forDuration(device);
         device->rtc->sync();
-#if PROFILE
-        t_synched[which] = std::chrono::high_resolution_clock::now();
-#endif
       }
       if (FromEnv::logQueues) {
         std::stringstream ss;
         ss << "#bn(" << myRank() << "): ## ray queue kernel TRACE DONE" << std::endl;
         std::cout << ss.str();
       }
-
-#if PROFILE
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_launch[0]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_launched[0]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_launch[1]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_launched[1]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_sync[0]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_synched[0]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_sync[1]-t0));
-      PRINT(std::chrono::duration_cast<std::chrono::nanoseconds>(t_synched[1]-t0));
-#endif
     }
 
   }

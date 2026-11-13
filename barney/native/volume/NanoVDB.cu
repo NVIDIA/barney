@@ -33,7 +33,7 @@ namespace BARNEY_NS {
       using GridT = typename nanovdb::Grid<nanovdb::NanoTree<BuildType>>;
 
       vec3i mcDims = mcGrid.dims;
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= mcDims.x*mcDims.y*mcDims.z) return;
       vec3i mcID(tid  %  mcDims.x,
                  (tid /  mcDims.x) % mcDims.y,

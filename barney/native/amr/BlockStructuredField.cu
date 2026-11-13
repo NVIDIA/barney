@@ -34,7 +34,7 @@ namespace BARNEY_NS {
                              MCGrid::DD               grid)
     {
 #if RTC_DEVICE_CODE
-      const int tid = ci.launchIndex().x;
+      const int tid = ci.getLaunchIndex().x;
       if (tid >= field.numBlocks) return;
 
       const Block block = Block::getFrom(field,tid);
@@ -62,7 +62,7 @@ namespace BARNEY_NS {
                             const BlockStructuredField::DD dd)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= dd.numBlocks)
         return;
 
@@ -170,7 +170,7 @@ namespace BARNEY_NS {
                                    BlockStructuredField::DD field)
     {
 #if RTC_DEVICE_CODE
-      const int tid = ci.launchIndex().x;
+      const int tid = ci.getLaunchIndex().x;
       if (tid >= field.numBlocks) return;
 
       Block block = Block::getFrom(field,tid);

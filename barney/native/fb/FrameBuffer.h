@@ -7,6 +7,11 @@
 #include "native/Context.h"
 #include "native/fb/TiledFB.h"
 
+/*! if set, we write - and gather/reduce/reconstitute - the aux
+    channels (depth, alpha, objID etc) only on the frist frame being
+    accumulated. */
+#define DO_AUX_CHANNELS_ONLY_ON_FIRST_FRAME 1
+
 namespace BARNEY_NS {
   namespace native {
 
@@ -30,8 +35,9 @@ namespace BARNEY_NS {
         are set may get queried by the application (ie those that are
         not set do not have to be stored or even computed */
       virtual void resize(BNDataType colorFormat,
-                  vec2i size,
-                  uint32_t channels);
+                          vec2i size,
+                          uint32_t channels,
+                          bool isAltFrame);
       virtual void resetAccumulation();
 
       void freeResources();
@@ -124,6 +130,11 @@ namespace BARNEY_NS {
         numPixels/2 when upscaling) */
       vec2i      renderPixels = {-1,-1};
 
+      /*! if set, then this is a 'altFrame' in which all tiles of the
+          tiledfb get rendered like for any other frame, but which is
+          NOT reconstituted -- and thus, not mappable -- on rank 0 */
+      bool isAltFrame = 0;
+      
       Device *getDenoiserDevice() const;
 
       /*! gather color (and normal, if required for denoising),
@@ -163,10 +174,6 @@ namespace BARNEY_NS {
         this frame buffer's accumulation buffer. Note this is counted
         in *samples*, not *frames*. */
       uint32_t    accumID = 0;
-
-      /*! kernel that converts from a linear device-side float4 format
-        to a linear device-side ufixed8 format */
-      rtc::ComputeKernel2D *linear_toFixed8 = 0;
 
       const bool  isOwner;
       bool  showCrosshairs = false;

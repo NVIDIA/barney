@@ -83,7 +83,7 @@ namespace BARNEY_NS {
 
 
     struct ComputeInterface {
-      inline vec3ui launchIndex() const
+      inline vec3ui getLaunchIndex() const
       {
         return getThreadIdx() + getBlockIdx() * getBlockDim();
       }
@@ -168,6 +168,11 @@ namespace BARNEY_NS {
       }
     }
     
+    struct Dim3Helper : public ::owl::common::vec3ui {
+      Dim3Helper(uint32_t ui) : vec3ui(ui,1,1) {}
+      Dim3Helper(vec2ui v) : vec3ui(v.x,v.y,1) {}
+      Dim3Helper(vec3ui v) : vec3ui(v) {}
+    };
   }
 }
 
@@ -176,17 +181,26 @@ namespace BARNEY_NS {
   {                                                                     \
     BARNEY_NS::rtc::LaunchSystem *ls                                    \
       = ((BARNEY_NS::rtc::Device *)dev)->ls;                            \
-    int numTotal = nb;                                                  \
+    ::BARNEY_NS::rtc::Dim3Helper _nb(nb);                               \
+    ::BARNEY_NS::rtc::Dim3Helper _bs(bs);                               \
+    int numTotal = _nb.x*_nb.y*_nb.z;                                   \
     BARNEY_NS::rtc::TaskWrapper task([&](int taskID)                    \
     {                                                                   \
-      BARNEY_NS::rtc::ComputeInterface ci;                              \
-      ci.gridDim = {(unsigned)nb,1u,1u};                                \
-      ci.blockDim = {(unsigned)bs,1u,1u};                               \
-      ci.blockIdx = {(unsigned)taskID,0u,0u};                           \
-      ci.threadIdx = {0u,0u,0u};                                        \
-      for (ci.threadIdx.x=0;ci.threadIdx.x<(uint32_t)bs;ci.threadIdx.x++){ \
-        kernel(ci,__VA_ARGS__);                                         \
-      }                                                                 \
+    ::BARNEY_NS::rtc::ComputeInterface ci;                              \
+    ci.gridDim  = _nb;                                                  \
+    ci.blockDim = _bs;                                                  \
+    ci.blockIdx.z = taskID / (_nb.x*_nb.y);                             \
+    taskID -= ci.blockIdx.z*(_nb.x*_nb.y);                              \
+    ci.blockIdx.y = taskID / (_nb.x);                                   \
+    taskID -= ci.blockIdx.y*(_nb.x);                                    \
+    ci.blockIdx.x = taskID;                                             \
+    ci.blockIdx = {(unsigned)taskID,0u,0u};                             \
+    ci.threadIdx = {0u,0u,0u};                                          \
+    for (ci.threadIdx.z=0;ci.threadIdx.z<_bs.z;ci.threadIdx.z++)        \
+      for (ci.threadIdx.y=0;ci.threadIdx.y<_bs.y;ci.threadIdx.y++)      \
+        for (ci.threadIdx.x=0;ci.threadIdx.x<_bs.x;ci.threadIdx.x++){   \
+          kernel(ci,__VA_ARGS__);                                       \
+        }                                                               \
     });                                                                 \
     ls->launchAndWait(numTotal,&task);                                  \
   }                                               

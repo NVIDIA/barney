@@ -115,7 +115,7 @@ namespace BARNEY_NS {
                                        MCGrid::DD grid)
     {
 #if RTC_DEVICE_CODE
-      const int cellIdx = ci.launchIndex().x;
+      const int cellIdx = ci.getLaunchIndex().x;
       if (cellIdx >= mesh.numCells) return;    
 
       auto cellType = mesh.cellTypes[cellIdx];
@@ -286,7 +286,7 @@ namespace BARNEY_NS {
                                 range1f *d_primRanges)
     {
 #if RTC_DEVICE_CODE
-      const int tid = ci.launchIndex().x;
+      const int tid = ci.getLaunchIndex().x;
       if (tid >= mesh.numCells) return;
     
       const box4f eb = umeshSanitizePrimBoundsForCuBQL(mesh, mesh.cellBounds(tid));
@@ -323,7 +323,7 @@ namespace BARNEY_NS {
                             box3f *pWorldBounds)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= mesh.numCells)
         return;
       box4f bounds = mesh.cellBounds(tid);

@@ -27,8 +27,48 @@ namespace BARNEY_NS {
     };
   
     struct RayQueue {
+      
+      /*! device data for a given ray queue, tracking both current ray
+          queue (the one we're currently shading and/or tracing) as
+          well as a secondary queue to write newly generated rays into
+          (for raygen or shade output) */
+      struct DD {
+        struct {
+          /*! depth and inst/prim/obj IDs of closest surface or volume
+              _irrespective of opacity or stochastic sampling. during
+              distributed trace these do need to get tracked/reduced
+              across all GPUs */
+          HitIDs    *hitIDs;
+          
+          /*! the actual rays (and hits). during distributed trace
+              these do need to get tracked/reduced across all GPUs */
+          Ray       *rays;
+          
+          /*! hit-independent shading state that is _only_ relevant to
+              shading, not during trace or intersection - and which
+              thus does _not_ have to be tracked/reduced across
+              different gpus */
+          PathState *states;
+          
+          /*! number of rays in this queue */
+          int numActive;
+        } /* !current generation of rays; the one we're currently
+             tracing or shading */currentGen;
+        
+        struct {
+          Ray       *rays;
+          PathState *states;
+          /*! pointer to atomically writable int that tracks number of
+              rays written into this queue */
+          int       *pNumActive;
+        } nextGen;
+      };
+      
       RayQueue(Device *device);
       ~RayQueue();
+
+      DD getDD() const;
+      
       int readNumActive();
       /*! how many rays are active in the *READ* queue */
       int numActiveRays() const;

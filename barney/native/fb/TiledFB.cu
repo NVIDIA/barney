@@ -34,7 +34,14 @@ namespace BARNEY_NS {
       if (iy >= numPixels.y) return;
       int idx = ix + numPixels.x*iy;
 
-      vec4f color = tile->accum[subIdx] * accumScale;
+      vec4f color = tile->accum[subIdx];
+#if DO_AUX_CHANNELS_ONLY_ON_FIRST_FRAME
+      // if we only do alpha on frist frame this value is NOT
+      // accumulated, so only scale rgb values
+      (vec3f&)color *= accumScale;
+#else
+      color *= accumScale;
+#endif
 
       if (colorFormat == BN_FLOAT4) {
         ((vec4f*)out_rgba)[idx] = color;
@@ -293,7 +300,7 @@ namespace BARNEY_NS {
                              int globalIndexStep)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= numActiveTiles) return;
     
       int tileID = tid * globalIndexStep + globalIndex;

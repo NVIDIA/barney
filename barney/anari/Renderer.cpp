@@ -27,13 +27,18 @@ namespace BARNEY_NS {
       m_fadeOutDenoiser = getParam<bool>("fadeOutDenoiser", false);
       m_upscale = getParam<bool>("upscale", false);
       m_background = getParam<math::float4>("background", math::float4(0, 0, 0, 1));
-      m_backgroundImage = getParamObject<Array2D>("background");
-      m_cutPlane = getParam<math::float4>("cutPlane", math::float4(0, 0, 0, 0));
-#if BARNEY_USE_MULTI_SCATTERING
-      m_maxVolumeBounces = getParam<int>("maxVolumeBounces", 8);
-      m_volumeMultiScatter = getParam<bool>("volumeMultiScatter", false);
-#endif
-      m_sampleLimit = std::clamp(getParam<int>("sampleLimit", 1024), 1, INT_MAX);
+      m_backgroundImage
+        = getParamObject<Array2D>("background");
+      m_cutPlane
+        = getParam<math::float4> ("cutPlane", math::float4(0, 0, 0, 0));
+
+      m_maxVolumeBounces
+        = getParam<int>  ("maxVolumeBounces", 8);
+      m_volumeMultiScatter
+        = getParam<bool>("volumeMultiScatter", false);
+
+      m_sampleLimit
+        = std::clamp(getParam<int>("sampleLimit", 1024), 1, INT_MAX);
     }
 
     void Renderer::finalize()
@@ -42,10 +47,8 @@ namespace BARNEY_NS {
       bnSet1i(barneyRenderer, "crosshairs", (int)m_crosshairs);
       bnSet1i(barneyRenderer, "pathsPerPixel", (int)m_pixelSamples);
       bnSet1f(barneyRenderer, "ambientRadiance", m_ambientRadiance);
-#if BARNEY_USE_MULTI_SCATTERING
       bnSet1i(barneyRenderer, "maxVolumeBounces", m_maxVolumeBounces);
       bnSet1i(barneyRenderer, "volumeMultiScatter", (int)m_volumeMultiScatter);
-#endif
       bnSet1i(barneyRenderer, "sampleLimit", m_sampleLimit);
       bnSet4f(barneyRenderer, "cutPlane",
               m_cutPlane.x, m_cutPlane.y, m_cutPlane.z, m_cutPlane.w);

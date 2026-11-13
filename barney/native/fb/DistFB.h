@@ -66,8 +66,6 @@ namespace BARNEY_NS {
           CompressedColorTile  *compressedColorTiles = 0;
           CompressedNormalTile *compressedNormalTiles = 0;
         } localSend;
-        rtc::ComputeKernel1D *compressTiles = 0;
-        rtc::ComputeKernel1D *unpackTiles = 0;
       };
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
@@ -80,7 +78,8 @@ namespace BARNEY_NS {
         not set do not have to be stored or even computed */
       void resize(BNDataType colorFormat,
                   vec2i size,
-                  uint32_t channels) override;
+                  uint32_t channels,
+                  bool isAltFrame) override;
 
       /*! gather color (and optionally, if not null) linear normal, from
         all GPUs (and ranks). lienarColor and lienarNormal are
