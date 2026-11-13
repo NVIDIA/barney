@@ -72,9 +72,9 @@ namespace BARNEY_NS {
                                     const PackedBSDF &packedBSDF,
                                     vec3f geometricNormal = vec3f(0.f));
       
-      inline __rtc_device bool hadHit() const { return bsdfType != PackedBSDF::NONE; }
+      inline __rtc_device bool hadHit() const { return bsdfType != PackedBSDF::INVALID; }
       inline __rtc_device void clearHit(float newTMax = BARNEY_INF)
-      { bsdfType = PackedBSDF::NONE; tMax = newTMax; }
+      { bsdfType = PackedBSDF::INVALID; tMax = newTMax; }
       
       inline __rtc_device void packNormal(vec3f N);
       inline __rtc_device vec3f unpackNormal() const;
@@ -183,7 +183,7 @@ namespace BARNEY_NS {
                        PathState &state,
                        vec3f _tp, vec3f _org, vec3f _dir, float len)
     {
-      ray.bsdfType = PackedBSDF::NONE;
+      ray.bsdfType = PackedBSDF::INVALID;
       ray.isShadowRay = 1;
       // iw: issue #66: initialize the dbg and crosshair flags; they
       // can still be overwritten but shouldn't be left uninitialized.
