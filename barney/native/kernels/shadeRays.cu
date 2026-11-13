@@ -24,35 +24,48 @@ namespace BARNEY_NS {
                     AccumTile *accumTiles,
                     AuxTiles auxTiles,
                     int accumID,
-                    SingleQueue readQueue,
-                    int numRays,
-                    SingleQueue writeQueue,
-                    int *d_nextWritePos,
+                    RayQueue::DD rayQueue,
+                    // SingleQueue readQueue,
+                    // int numRays,
+                    // SingleQueue writeQueue,
+                    // int *d_nextWritePos,
                     int generation)
     {
 #if RTC_DEVICE_CODE
       const uint32_t tid = rt.launchIndex().x;
-      if (tid >= numRays)
+      if (tid >= rayQueue.currentGen.numActive)
         return;
-      Ray ray = readQueue.rays[tid];
-      PathState state = readQueue.states[tid];
-      const float alpha =
-        (generation == 0)
-        // for PRIMARY rays alpha is always true if it hit something,
-        // and otherwise it is whatever the background color
-        // for that pixel indicated.
-        ? (ray.hadHit() ? 1.f : state.miss.alpha)
-        // SECONDARY rays alpha does not matter at all.
-        : 0.f;
+      Ray       ray   = rayQueue.currentGen.rays[tid];
+      PathState state = rayQueue.currentGen.states[tid];
+      /*! value to be written into the alpha channel; this is only
+          needed for generation==0, as only this generation will ever
+          write that channel */
+      const float alpha
+        = ray.hadHit()
+        ? /* alpha is always 1 if we hit something - _any_thing */1.f
+        : /* if no't hit, alpha comes from background*/state.miss.alpha;
       const float incomingZ = ray.tMax;
+      /* this is used for shading, but for generation==0 is ALSO
+         written into the normal buffer, so make sure it's initialized
+         even if there is no hit */
       const vec3f incomingN
         = ray.hadHit()
         ? ray.getShadingNormal()
         : vec3f(0.f);
+      /*! what we write to / add to the color channel */
       vec3f fragment(0.f);
       Ray shadowRay;
       PathState shadowState;
       shadowRay.tMax = -1.f;
+      /* for any given input ray ('ray') this can generate: a)
+         possibly, a secondary 'bounce' ray (if so, this will modify
+         the 'ray' and 'state' of the incoming ray to store the
+         outgoing one; if no, ray.t will be set to <= 0); b) possibly,
+         a shadow ray (if so, this will set shadowRay and shadowState;
+         if not, it will set shadowRay.tMax to <= 0.f); and c)
+         possibly, a fragment that needs to be written to the frame
+         buffer (if the path hit an emsssive surface, or a shadow ray
+         was found to be not occluded).  */
       bounce(world,
              renderer,
              fragment,
@@ -65,15 +78,23 @@ namespace BARNEY_NS {
       if (ray.crosshair && !ray.dbg())
         fragment = vec3f(1.f, 0.f, 0.f);
 #endif
-      if (shadowRay.tMax > 0.f) {
-        const int pos = rt.atomicAdd(d_nextWritePos, 1);
-        writeQueue.rays[pos] = shadowRay;
-        writeQueue.states[pos] = shadowState;
-      }
-      if (ray.tMax > 0.f) {
-        const int pos = rt.atomicAdd(d_nextWritePos, 1);
-        writeQueue.rays[pos] = ray;
-        writeQueue.states[pos] = state;
+      const bool haveShadowRay = shadowRay.valid();
+      const bool haveBounceRay = ray.valid();
+      int numRaysToWrite = ((int)haveShadowRay+(int)haveBounceRay);
+      if (numRaysToWrite > 0) {
+        int writePos = rt.atomicAdd(rayQueue.nextGen.pNumActive, numRaysToWrite);
+        /* write shadow ray to output queue, but only if valid */
+        if (haveShadowRay) {
+          /* no need to write hitIDs, shadow rays never write those anyway */
+          rayQueue.nextGen.rays[writePos]   = shadowRay;
+          rayQueue.nextGen.states[writePos] = shadowState;
+          ++writePos;
+        }
+        /* write bounce ray to output queue, but only if valid */
+        if (ray.tMax > 0.f) {
+          rayQueue.nextGen.rays[writePos]   = ray;
+          rayQueue.nextGen.states[writePos] = state;
+        }
       }
       const int tileID = int(state.pixelID / pixelsPerTile);
       const int tileOfs = int(state.pixelID % pixelsPerTile);
@@ -86,16 +107,17 @@ namespace BARNEY_NS {
         // sense
         out = vec4f(fragment.x, fragment.y, fragment.z, alpha);
         accumTiles[tileID].normal[tileOfs] = incomingN;
+        auto hitIDs = rayQueue.currentGen.hitIDs;
         if (auxTiles.depth)
-          auxTiles.depth[tileID].f[tileOfs] = incomingZ;
+          auxTiles.depth[tileID].f[tileOfs]   = incomingZ;
         if (auxTiles.primID)
-          auxTiles.primID[tileID].ui[tileOfs] = readQueue.hitIDs[tid].primID;
+          auxTiles.primID[tileID].ui[tileOfs] = hitIDs[tid].primID;
         if (auxTiles.objID)
-          auxTiles.objID[tileID].ui[tileOfs] = readQueue.hitIDs[tid].objID;
+          auxTiles.objID[tileID].ui[tileOfs]  = hitIDs[tid].objID;
         if (auxTiles.instID)
-          auxTiles.instID[tileID].ui[tileOfs] = readQueue.hitIDs[tid].instID;
+          auxTiles.instID[tileID].ui[tileOfs] = hitIDs[tid].instID;
         if (auxTiles.motion && camera.haveMotionMatrices && incomingZ < 1e19f) {
-          const int instID = readQueue.hitIDs[tid].instID;
+          const int instID = hitIDs[tid].instID;
           const vec3f worldHit = ray.P;
           const vec3f prevWorld =
             world.motionDeltas && instID >= 0 && instID < world.numMotionDeltas
@@ -115,12 +137,25 @@ namespace BARNEY_NS {
             vec2f(delta.x * fbSize.x, delta.y * fbSize.y);
         }
       } else {
+#if DO_AUX_CHANNELS_ONLY_ON_FIRST_FRAME
+        /* nothing - aux channels only get written in first frame */
+#else
+        /* iw - this is debatable: currently alpha channel and aux
+           tiles will always get updated/accumulated across multiple
+           accumulated frames. this means that after N frames the
+           depth channel will show the closest of all N frames' depth
+           - and the alpha one the average alpha of all N frames -
+           rather than just the first frame's. this may be
+           undesirable */
         if (generation == 0) {
           if (alpha > 0.f)
             rt.atomicAdd(&out.w, alpha);
           if (auxTiles.depth && incomingZ < auxTiles.depth[tileID].f[tileOfs])
             auxTiles.depth[tileID].f[tileOfs] = incomingZ;
         }
+#endif
+        /* any non-zero _fragment_ will always get accumulated, for every
+           wave and every genertaion */
         if (fragment.x > 0.f)
           rt.atomicAdd(&out.x, fragment.x);
         if (fragment.y > 0.f)
@@ -161,22 +196,23 @@ namespace BARNEY_NS {
                       << "  to " << rayQueue->receiveAndShadeWriteQueue.rays
                       << " + " << rayQueue->receiveAndShadeWriteQueue.states
                       << std::endl;
-          __rtc_launch(device->rtc,
-                       _shadeRays,
-                       nb,
-                       bs,
-                       devWorld,
-                       devRenderer,
-                       devCamera,
-                       fbSize,
-                       devFB->accumTiles,
-                       devFB->auxTiles,
-                       (int)fb->accumID,
-                       rayQueue->traceAndShadeReadQueue,
-                       numRays,
-                       rayQueue->receiveAndShadeWriteQueue,
-                       rayQueue->_d_nextWritePos,
-                       generation);
+          __rtc_launch(/* device     */device->rtc,
+                       /* kernel     */_shadeRays,
+                      /* launchdims */ nb, bs,
+           /* -----kernel args ----- */
+                                       devWorld,
+                                       devRenderer,
+                                       devCamera,
+                                       fbSize,
+                                       devFB->accumTiles,
+                                       devFB->auxTiles,
+                                       (int)fb->accumID,
+                                       rayQueue->getDD(),
+                                       // rayQueue->traceAndShadeReadQueue,
+                                       // numRays,
+                                       // rayQueue->receiveAndShadeWriteQueue,
+                                       // rayQueue->_d_nextWritePos,
+                                       generation);
         }
       }
       for (auto device : *devices) {

@@ -12,7 +12,16 @@ namespace BARNEY_NS {
     /*! HitIDs are used for a special "ID pass" that computes the
       closest intersection along a (primary) ray, WITHOUT any opacity
       or transparency taken into effect. As such it requires its own
-      depth value */
+      depth value: a ray hitting a semi-transparent object will
+      randomly decide whether or not to accept the hit, so if we were
+      to rely on ray.t to determine depth channel that value would
+      randomly pick the front surface or another surface behind it.
+      Note that even though 'traceRays' will fill all those values we
+      do _not_ necessarily have to send them over the network for
+      frame assembly - though these get written by trace as a array of
+      structs, in the TiledFB we actually store them as separate tiles
+      (one per value), and only those that are enabled in anari will
+      actually get sent/copied to dev0 for assembly */
     struct HitIDs {
       float depth = BARNEY_INF;
       int primID = -1;

@@ -7,6 +7,11 @@
 #include "native/Context.h"
 #include "native/fb/TiledFB.h"
 
+/*! if set, we write - and gather/reduce/reconstitute - the aux
+    channels (depth, alpha, objID etc) only on the frist frame being
+    accumulated. */
+#define DO_AUX_CHANNELS_ONLY_ON_FIRST_FRAME 1
+
 namespace BARNEY_NS {
   namespace native {
 

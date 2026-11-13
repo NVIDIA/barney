@@ -88,6 +88,9 @@ namespace BARNEY_NS {
         const vec3f n = (vec3f)geometricNormal;
         return dot(n,n) > 0.f ? normalize(n) : n;
       }
+
+      inline __rtc_device void markAsInvalid() { tMax = -1.f; }
+      inline __rtc_device bool valid() const { return tMax > 0.f; };
 #endif
 
       vec3f   org;

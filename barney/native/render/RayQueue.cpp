@@ -44,6 +44,29 @@ namespace BARNEY_NS {
       states = 0;
     }
   
+    RayQueue::DD RayQueue::getDD() const
+    {
+      RayQueue::DD dd;
+
+      dd.currentGen.hitIDs
+        = traceAndShadeReadQueue.hitIDs;
+      dd.currentGen.rays
+        = traceAndShadeReadQueue.rays;
+      dd.currentGen.states
+        = traceAndShadeReadQueue.states;
+      dd.currentGen.numActive
+        = numActive;
+
+      dd.nextGen.rays
+        = receiveAndShadeWriteQueue.rays;
+      dd.nextGen.states
+        = receiveAndShadeWriteQueue.states;
+      dd.nextGen.pNumActive
+        = _d_nextWritePos;
+      
+      return dd;
+    }
+
     int RayQueue::readNumActive()
     {
       SetActiveGPU forDuration(device);

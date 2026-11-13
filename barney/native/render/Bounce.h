@@ -114,24 +114,26 @@ inline __rtc_device void bounce(const World::DD &world,
     PathState &state,
     Ray &shadowRay,
     PathState &shadowState,
-    int depth)
+/* primary rays have generation 0, first bounce rays (as well as first
+   shadow ray) are generation 1, etc */ 
+    int generation)
 {
   const bool missed = !ray.hadHit();
   if (ray.isShadowRay) {
     if (missed)
       fragment = (vec3f)state.throughput * (float)state.misWeight;
-    ray.tMax = -1.f;
+    ray.markAsInvalid();
     return;
   }
   if (missed) {
     fragment
-      = (depth == 0)
+      = (generation == 0)
       ? (world.envMapLight.texture
          ? radianceFromEnv(world, renderer, ray)
          : state.miss.color)
       : state.throughput * radianceFromEnv(world, renderer, ray)
       * (float)state.misWeight;
-    ray.tMax = -1.f;
+    ray.markAsInvalid();
     return;
   }
   const vec3f geometricNormal = ray.getGeometricNormal();
@@ -172,16 +174,18 @@ inline __rtc_device void bounce(const World::DD &world,
       shadowState.pixelID = state.pixelID;
     }
   }
-  ray.tMax = -1.f;
-  if (depth >= 10)
+  ray.markAsInvalid();
+  if (generation >= 10)
     return;
   ScatterResult s;
   bsdf.scatter(s, interaction, random);
   if (!s.valid())
     return;
-  const bool transmission = s.event == ScatterResult::TRANSMISSION;
+  const bool transmission = (s.event == ScatterResult::TRANSMISSION);
   if (!volume
-      && (transmission ? dot(orientedGeometricNormal, s.dir) >= 0.f : dot(orientedGeometricNormal, s.dir) <= 0.f))
+      && (transmission
+          ? dot(orientedGeometricNormal, s.dir) >= 0.f
+          : dot(orientedGeometricNormal, s.dir) <= 0.f))
     return;
   if (s.event == ScatterResult::VOLUME_EVENT) {
 #if BARNEY_USE_MULTI_SCATTERING
