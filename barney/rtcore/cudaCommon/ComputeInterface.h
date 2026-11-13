@@ -167,101 +167,23 @@ namespace BARNEY_NS {
       } 
     }
 #endif
-    
+
+    struct Dim3Helper : public ::owl::common::vec3ui {
+      Dim3Helper(uint32_t ui) : vec3ui(ui,1,1) {}
+      Dim3Helper(vec2ui v) : vec3ui(v.x,v.y,1) {}
+      Dim3Helper(vec3ui v) : vec3ui(v) {}
+      inline operator dim3() const { return dim3{x,y,z}; }
+    };
   }
 }
-
-
-
-#if RTC_DEVICE_CODE
-# define RTC_CUDA_KERNEL(name,className)                        \
-  __global__ void _barney_cuda_kernel_##name(className dd)      \
-  {                                                             \
-    ::BARNEY_NS::rtc::ComputeInterface ci;                      \
-    dd.run(ci);                                                 \
-  }                                                                     
-#else
-# define RTC_CUDA_KERNEL(name,className)                        \
-  __global__ void _barney_cuda_kernel_##name(className dd);
-#endif
-
-#define RTC_EXPORT_COMPUTE1D(name,className)                    \
-  RTC_CUDA_KERNEL(name,className)                               \
-  struct _barney_cuda_compute1D_##name                          \
-  : public ::BARNEY_NS::rtc::ComputeKernel1D                    \
-  {                                                             \
-    _barney_cuda_compute1D_##name(rtc::Device *device)          \
-      : device(device)                                          \
-      {}                                                        \
-    void launch(unsigned int nb,                                \
-                unsigned int bs,                                \
-                const void *ddPtr) override                     \
-    {                                                           \
-      ::BARNEY_NS::rtc::SetActiveGPU forDuration(device);       \
-      if (nb > 0)                                               \
-        _barney_cuda_kernel_##name<<<nb,bs,0,device->stream>>>  \
-          (*(const className*)ddPtr);                           \
-    }                                                           \
-    rtc::Device *const device;                                  \
-  };                                                            \
-  rtc::ComputeKernel1D *createCompute_##name(rtc::Device *dev)  \
-  { return new _barney_cuda_compute1D_##name(dev); }            \
-  
-#define RTC_EXPORT_COMPUTE2D(name,className)                    \
-  RTC_CUDA_KERNEL(name,className)                               \
-  struct _barney_cuda_compute2D_##name                          \
-  : public ::BARNEY_NS::rtc::ComputeKernel2D                    \
-  {                                                             \
-    _barney_cuda_compute2D_##name(rtc::Device *device)          \
-      : device(device)                                          \
-      {}                                                        \
-    void launch(::BARNEY_NS::rtc::vec2ui nb,                    \
-                ::BARNEY_NS::rtc::vec2ui bs,                    \
-                const void *ddPtr) override                     \
-    {                                                           \
-      ::BARNEY_NS::rtc::SetActiveGPU forDuration(device);       \
-      if (nb.x > 0 && nb.y > 0)                                 \
-        _barney_cuda_kernel_##name                              \
-          <<<dim3{(unsigned)nb.x,(unsigned)nb.y,1u},            \
-          dim3{(unsigned)bs.x,(unsigned)bs.y,1u},               \
-          0,device->stream>>>                                   \
-          (*(const className*)ddPtr);                           \
-    }                                                           \
-    rtc::Device *const device;                                  \
-  };                                                            \
-  rtc::ComputeKernel2D *createCompute_##name(rtc::Device *dev)  \
-  { return new _barney_cuda_compute2D_##name(dev); }            \
-
-#define RTC_EXPORT_COMPUTE3D(name,className)                            \
-  RTC_CUDA_KERNEL(name,className)                                       \
-  struct _barney_cuda_compute3D_##name                                  \
-  : public ::BARNEY_NS::rtc::ComputeKernel3D                            \
-  {                                                                     \
-    _barney_cuda_compute3D_##name(rtc::Device *device)                  \
-      : device(device)                                                  \
-      {}                                                                \
-    void launch(rtc::vec3ui nb,                                         \
-                rtc::vec3ui bs,                                         \
-                const void *ddPtr) override                             \
-    {                                                                   \
-      ::BARNEY_NS::rtc::SetActiveGPU forDuration(device);               \
-      if (nb.x > 0 && nb.y > 0 && nb.z > 0)                             \
-        _barney_cuda_kernel_##name                                      \
-          <<<dim3{(unsigned)nb.x,(unsigned)nb.y,(unsigned)nb.z},        \
-          dim3{(unsigned)bs.x,(unsigned)bs.y,(unsigned)bs.z},           \
-          0,device->stream>>>                                           \
-          (*(const className*)ddPtr);                                   \
-    }                                                                   \
-    rtc::Device *const device;                                          \
-  };                                                                    \
-  rtc::ComputeKernel3D *createCompute_##name(rtc::Device *dev)          \
-  { return new _barney_cuda_compute3D_##name(dev); }                    \
-
 
 # define __rtc_global __global__
 # define __rtc_launch(myRTC,kernel,nb,bs,...)                           \
   {                                                                     \
     ::BARNEY_NS::rtc::SetActiveGPU forDuration(myRTC);                  \
-    if (nb) kernel<<<nb,bs,0,myRTC->stream>>>                           \
+    ::BARNEY_NS::rtc::Dim3Helper _nb(nb);                               \
+    ::BARNEY_NS::rtc::Dim3Helper _bs(bs);                               \
+    if (_nb.x)                                                          \
+      kernel<<<_nb,_bs,0,myRTC->stream>>>                               \
               (::BARNEY_NS::rtc::ComputeInterface(), __VA_ARGS__);      \
   }

@@ -9,9 +9,6 @@
 namespace BARNEY_NS {
   namespace native {
 
-    RTC_IMPORT_COMPUTE1D(compressTiles);
-    RTC_IMPORT_COMPUTE1D(unpackTiles);
-
     inline __rtc_device float from_8bit(uint8_t v) {
       return float(v) * (1.f/255.f);
     }
@@ -23,23 +20,17 @@ namespace BARNEY_NS {
                    from_8bit(uint8_t((v >> 24)&0xff)));
     }
   
-    struct UnpackTiles {
-      vec2i numPixels;
-      void                 *out_rgba;
-      BNDataType            colorChannelFormat;
-      vec3f                *out_normal;
-      CompressedColorTile  *in_color;
-      CompressedNormalTile *in_normal;
-      TileDesc             *descs;
-    
-#if RTC_DEVICE_CODE
-      __rtc_device void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-
-#if RTC_DEVICE_CODE
-    __rtc_device void UnpackTiles::run(const rtc::ComputeInterface &ci)
+    __rtc_global
+    void UnpackTiles(const rtc::ComputeInterface &ci,
+                     vec2i                 numPixels,
+                     void                 *out_rgba,
+                     BNDataType            colorChannelFormat,
+                     vec3f                *out_normal,
+                     CompressedColorTile  *in_color,
+                     CompressedNormalTile *in_normal,
+                     TileDesc             *descs)
     {
+#if RTC_DEVICE_CODE
       int tileIdx = ci.getBlockIdx().x;
       
       const CompressedColorTile  &colorTile  = in_color[tileIdx];
@@ -77,23 +68,17 @@ namespace BARNEY_NS {
         vec3f normal = normalTile.normal[subIdx].get3f();
         out_normal[idx] = normal;
       }
+#endif
     }
-#endif
   
-    struct CompressTiles {
-      CompressedColorTile  *out_color;
-      CompressedNormalTile *out_normal;
-      AccumTile            *localTiles;
-      float                 accumScale;
-    
-#if RTC_DEVICE_CODE
-      __rtc_device void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-
-#if RTC_DEVICE_CODE
-    __rtc_device void CompressTiles::run(const rtc::ComputeInterface &ci)
+    __rtc_global
+    void CompressTiles(const rtc::ComputeInterface &ci,
+                       CompressedColorTile  *out_color,
+                       CompressedNormalTile *out_normal,
+                       AccumTile            *localTiles,
+                       float                 accumScale)
     {
+#if RTC_DEVICE_CODE
       int pixelID = ci.getThreadIdx().x;
       int tileID  = ci.getBlockIdx().x;
 
@@ -107,8 +92,8 @@ namespace BARNEY_NS {
         out_normal[tileID].normal[pixelID]
           .set(localTiles[tileID].normal[pixelID]);
       }
-    }
 #endif
+    }
 
 
     void DistFB::gatherMotionChannel()
@@ -206,12 +191,6 @@ namespace BARNEY_NS {
                               aux_recv+ownerGather.firstTileOnGPU[ggID],
                               ownerGather.numTilesOnGPU[ggID],
                               recv_requests[ggID]);
-          // int rankOfGPU = ggID / context->gpusPerWorker;
-          // int localID   = ggID % context->gpusPerWorker;
-          // context->world.recv(context->worldRankOfWorker[rankOfGPU],localID,
-          //                     aux_recv+ownerGather.firstTileOnGPU[ggID],
-          //                     ownerGather.numTilesOnGPU[ggID],
-          //                     recv_requests[ggID]);
         }
       }
     
@@ -349,13 +328,15 @@ namespace BARNEY_NS {
           auto tiledFB = getFor(device);
           auto pld = getPLD(device);
           float accumScale = 1.f/accumID;
-          CompressTiles kernel = {
-            pld->localSend.compressedColorTiles,
-            pld->localSend.compressedNormalTiles,
-            tiledFB->accumTiles,
-            accumScale
-          };
-          pld->compressTiles->launch(tiledFB->numActiveTilesThisGPU,pixelsPerTile,&kernel);
+          
+          __rtc_launch(device->rtc,
+                       CompressTiles,
+      /* launch dims */
+                       tiledFB->numActiveTilesThisGPU,pixelsPerTile,
+                       pld->localSend.compressedColorTiles,
+                       pld->localSend.compressedNormalTiles,
+                       tiledFB->accumTiles,
+                       accumScale);
         }
         for (auto device : *devices) {
           SetActiveGPU forDuration(device);
@@ -395,20 +376,21 @@ namespace BARNEY_NS {
       // all (packed) tiles received; unpack (on owner only)
       // ------------------------------------------------------------------
       if (isOwner) {
-        UnpackTiles args = {
-          numPixels,
-          linearColor,
-          gatherType,
-          linearNormal,
-          gatheredTilesOnOwner.compressedColorTiles,
-          gatheredTilesOnOwner.compressedNormalTiles,
-          gatheredTilesOnOwner.tileDescs
-        };
         auto device = getDenoiserDevice();
+        int nb = gatheredTilesOnOwner.numActiveTiles;
+        int bs = pixelsPerTile;
         SetActiveGPU forDuration(device);
-        getPLD(device)->unpackTiles->launch(gatheredTilesOnOwner.numActiveTiles,
-                                            pixelsPerTile,
-                                            &args);
+        __rtc_launch(device->rtc,
+                     UnpackTiles,
+                     nb,bs,
+           /* args */
+                     numPixels,
+                     linearColor,
+                     gatherType,
+                     linearNormal,
+                     gatheredTilesOnOwner.compressedColorTiles,
+                     gatheredTilesOnOwner.compressedNormalTiles,
+                     gatheredTilesOnOwner.tileDescs);
         device->sync();
       }
     }
@@ -435,21 +417,11 @@ namespace BARNEY_NS {
         // ownerGather.numGPUs = context->numWorkers() * context->gpusPerWorker;
         ownerGather.numTilesOnGPU.resize(0);
       }
-      for (auto device : *devices) {
-        PLD *pld = getPLD(device);
-        pld->compressTiles = createCompute_compressTiles(device->rtc);
-        pld->unpackTiles = createCompute_unpackTiles(device->rtc);
-      }
     }
 
     DistFB::~DistFB()
     {
       freeChannelData();
-      for (auto device : *devices) {
-        PLD *pld = getPLD(device);
-        delete pld->compressTiles;
-        delete pld->unpackTiles;
-      }
     }
 
     DistFB::PLD *DistFB::getPLD(Device *device) 
@@ -679,7 +651,5 @@ namespace BARNEY_NS {
           context->world.wait(send_requests[localID]);
     }
   
-    RTC_EXPORT_COMPUTE1D(unpackTiles,UnpackTiles);
-    RTC_EXPORT_COMPUTE1D(compressTiles,CompressTiles);
   }
 }

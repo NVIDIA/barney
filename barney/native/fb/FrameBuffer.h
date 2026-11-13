@@ -175,10 +175,6 @@ namespace BARNEY_NS {
         in *samples*, not *frames*. */
       uint32_t    accumID = 0;
 
-      /*! kernel that converts from a linear device-side float4 format
-        to a linear device-side ufixed8 format */
-      rtc::ComputeKernel2D *linear_toFixed8 = 0;
-
       const bool  isOwner;
       bool  showCrosshairs = false;
       DevGroup::SP const devices;

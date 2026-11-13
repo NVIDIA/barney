@@ -66,8 +66,6 @@ namespace BARNEY_NS {
           CompressedColorTile  *compressedColorTiles = 0;
           CompressedNormalTile *compressedNormalTiles = 0;
         } localSend;
-        rtc::ComputeKernel1D *compressTiles = 0;
-        rtc::ComputeKernel1D *unpackTiles = 0;
       };
       PLD *getPLD(Device *device);
       std::vector<PLD> perLogical;
