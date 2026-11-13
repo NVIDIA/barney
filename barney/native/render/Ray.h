@@ -19,6 +19,10 @@ namespace BARNEY_NS {
       vec3f    throughput;
       int32_t  pixelID;
       float    misWeight;
+      struct {
+        vec3f color;
+        float alpha;
+      } miss;
       int      numDiffuseBounces;
       int      numVolumeBounces;
     };
@@ -105,10 +109,7 @@ namespace BARNEY_NS {
         return _dbg;
       }
       
-      union {
-        PackedBSDF::Data hitBSDF;
-        bn_float4 missColor;
-      };
+      PackedBSDF::Data hitBSDF;
     };
   
 #if RTC_DEVICE_CODE

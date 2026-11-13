@@ -124,12 +124,13 @@ inline __rtc_device void bounce(const World::DD &world,
     return;
   }
   if (missed) {
-    fragment = depth == 0
-        ? (world.envMapLight.texture
-                  ? radianceFromEnv(world, renderer, ray)
-                  : vec3f(ray.missColor.x, ray.missColor.y, ray.missColor.z))
-        : (vec3f)state.throughput * radianceFromEnv(world, renderer, ray)
-            * (float)state.misWeight;
+    fragment
+      = (depth == 0)
+      ? (world.envMapLight.texture
+         ? radianceFromEnv(world, renderer, ray)
+         : state.miss.color)
+      : state.throughput * radianceFromEnv(world, renderer, ray)
+      * (float)state.misWeight;
     ray.tMax = -1.f;
     return;
   }

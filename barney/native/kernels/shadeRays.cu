@@ -28,19 +28,26 @@ namespace BARNEY_NS {
                                  SingleQueue writeQueue,
                                  int *d_nextWritePos,
                                  int generation)
-#if !RTC_DEVICE_CODE
-    ;
-#else
     {
-      const int tid = rt.getThreadIdx().x + rt.getBlockIdx().x * rt.getBlockDim().x;
+#if RTC_DEVICE_CODE
+      const uint32_t tid = rt.launchIndex().x;
       if (tid >= numRays)
         return;
       Ray ray = readQueue.rays[tid];
       PathState state = readQueue.states[tid];
       const float alpha =
-        generation == 0 ? (ray.hadHit() ? 1.f : ray.missColor.w) : 0.f;
+        (generation == 0)
+        // for PRIMARY rays alpha is always true if it hit something,
+        // and otherwise it is whatever the background color
+        // for that pixel indicated.
+        ? (ray.hadHit() ? 1.f : state.miss.alpha)
+        // SECONDARY rays alpha does not matter at all.
+        : 0.f;
       const float incomingZ = ray.tMax;
-      const vec3f incomingN = ray.hadHit() ? ray.getShadingNormal() : vec3f(0.f);
+      const vec3f incomingN
+        = ray.hadHit()
+        ? ray.getShadingNormal()
+        : vec3f(0.f);
       vec3f fragment(0.f);
       Ray shadowRay;
       PathState shadowState;
@@ -71,6 +78,11 @@ namespace BARNEY_NS {
       const int tileOfs = int(state.pixelID % pixelsPerTile);
       vec4f &out = accumTiles[tileID].accum[tileOfs];
       if (accumID == 0 && generation == 0) {
+        // aux tiles will only get written for first ray through each
+        // pixel (which should be center pixel). colors will get
+        // accumulated (ie averaged) over multiple frames, but for
+        // alpha, normal, and IDs 'averaging' doesn't really make
+        // sense
         out = vec4f(fragment.x, fragment.y, fragment.z, alpha);
         accumTiles[tileID].normal[tileOfs] = incomingN;
         if (auxTiles.depth)
@@ -115,8 +127,8 @@ namespace BARNEY_NS {
         if (fragment.z > 0.f)
           rt.atomicAdd(&out.z, fragment.z);
       }
-    }
 #endif
+    }
 
     void Context::shadeRaysLocally(Renderer *renderer,
                                    GlobalModel *model,
