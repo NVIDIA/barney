@@ -5,9 +5,8 @@
 /*! file rtcore/cudaCommon/ComputeInterface.h Abstracts device-side
   compute operations (like atomics, texture-sampling, etc), defines
   the interace with which compute kernels can talk to the device (to
-  get thread idx etc), and the EXPORT macros to define device
-  kernels that host code can later import (using the
-  ComputeKernel.h:IMPORT macros) */
+  get thread idx etc), and the __rtc_launch() mechanism for launching
+  device kernels */
 #pragma once
 
 #include "rtcore/cudaCommon/cuda-common.h"

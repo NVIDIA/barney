@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "rtcore/cpu/ComputeInterface.h"
-#include "rtcore/cpu/ComputeKernel.h"
 #include <owl/common/parallel/parallel_for.h>
 #include <mutex>
 #include <thread>

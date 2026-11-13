@@ -8,7 +8,6 @@
 #include "rtcore/cpu/Device.h"
 #include "rtcore/cpu/Buffer.h"
 #include "rtcore/cpu/Group.h"
-#include "rtcore/cpu/ComputeKernel.h"
 #include "rtcore/cpu/Denoiser.h"
 
 namespace BARNEY_NS {
