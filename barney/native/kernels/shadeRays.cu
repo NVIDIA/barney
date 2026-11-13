@@ -15,19 +15,20 @@
 namespace BARNEY_NS {
   namespace native {
 
-    __rtc_global void _shadeRays(const rtc::ComputeInterface &rt,
-                                 World::DD world,
-                                 Renderer::DD renderer,
-                                 Camera::DD camera,
-                                 vec2i fbSize,
-                                 AccumTile *accumTiles,
-                                 AuxTiles auxTiles,
-                                 int accumID,
-                                 SingleQueue readQueue,
-                                 int numRays,
-                                 SingleQueue writeQueue,
-                                 int *d_nextWritePos,
-                                 int generation)
+    __rtc_global
+    void _shadeRays(const rtc::ComputeInterface &rt,
+                    World::DD world,
+                    Renderer::DD renderer,
+                    Camera::DD camera,
+                    vec2i fbSize,
+                    AccumTile *accumTiles,
+                    AuxTiles auxTiles,
+                    int accumID,
+                    SingleQueue readQueue,
+                    int numRays,
+                    SingleQueue writeQueue,
+                    int *d_nextWritePos,
+                    int generation)
     {
 #if RTC_DEVICE_CODE
       const uint32_t tid = rt.launchIndex().x;
