@@ -148,7 +148,7 @@ __rtc_global void clearCounts(const rtc::ComputeInterface &ci, int *counts, int 
 ;
 #else
 {
-  const int i = ci.launchIndex().x;
+  const int i = ci.getLaunchIndex().x;
   if (i < n) counts[i] = 0;
 }
 #endif
@@ -159,7 +159,7 @@ __rtc_global void computeFaces(const rtc::ComputeInterface &ci, TangentMesh mesh
 ;
 #else
 {
-  const int f = ci.launchIndex().x;
+  const int f = ci.getLaunchIndex().x;
   if (f >= mesh.numTriangles) return;
   const vec3i idx = mesh.indices ? mesh.indices[f] : vec3i(3*f,3*f+1,3*f+2);
   vec3f p[3];
@@ -212,7 +212,7 @@ __rtc_global void scanBlocks(const rtc::ComputeInterface &ci, int *values,
 ;
 #else
 {
-  const int block = ci.launchIndex().x;
+  const int block = ci.getLaunchIndex().x;
   const int begin = block*scanBlock;
   if (begin >= n) return;
   int sum = 0;
@@ -230,7 +230,7 @@ __rtc_global void addBlockSums(const rtc::ComputeInterface &ci, int *values,
 ;
 #else
 {
-  const int i = ci.launchIndex().x;
+  const int i = ci.getLaunchIndex().x;
   if (i < n) values[i] += sums[i/scanBlock];
 }
 #endif
@@ -242,7 +242,7 @@ __rtc_global void bucketCorners(const rtc::ComputeInterface &ci,
 ;
 #else
 {
-  const int c = ci.launchIndex().x;
+  const int c = ci.getLaunchIndex().x;
   if (c < n) bucketed[ci.atomicAdd(&cursors[corners[c].bucket],1)] = c;
 }
 #endif
@@ -255,7 +255,7 @@ __rtc_global void finalizeTangents(const rtc::ComputeInterface &ci,
 ;
 #else
 {
-  const int bucket = ci.launchIndex().x;
+  const int bucket = ci.getLaunchIndex().x;
   if (bucket >= n) return;
   const int begin = offsets[bucket], end = offsets[bucket+1];
   // One owner per bucket reduces a compatible group once, not once per

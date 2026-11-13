@@ -32,16 +32,28 @@ namespace BARNEY_NS {
                     int generation)
     {
 #if RTC_DEVICE_CODE
-      const uint32_t tid = rt.launchIndex().x;
+      const uint32_t tid = rt.getLaunchIndex().x;
       if (tid >= rayQueue.currentGen.numActive)
         return;
-      Ray       ray   = rayQueue.currentGen.rays[tid];
-      PathState state = rayQueue.currentGen.states[tid];
+      HitIDs   *hitIDs = rayQueue.currentGen.hitIDs;
+      Ray       ray    = rayQueue.currentGen.rays[tid];
+      PathState state  = rayQueue.currentGen.states[tid];
       /*! value to be written into the alpha channel; this is only
           needed for generation==0, as only this generation will ever
           write that channel */
       const float alpha
-        = ray.hadHit()
+        =
+#if 1
+        /* if alpha channel is supposed to be used by the app for
+           compositing reasons it should match the hitID channels'
+           decision on whether teh ray did or did not hit anything,
+           _not_ the output of the possibly stochastic decision on
+           whether a semi-transparent hit was or wasn't accepted
+           during trace */
+        (hitIDs && hitIDs[tid].primID >= 0)
+#else
+        ray.hadHit()
+#endif
         ? /* alpha is always 1 if we hit something - _any_thing */1.f
         : /* if no't hit, alpha comes from background*/state.miss.alpha;
       const float incomingZ = ray.tMax;
@@ -107,9 +119,10 @@ namespace BARNEY_NS {
         // sense
         out = vec4f(fragment.x, fragment.y, fragment.z, alpha);
         accumTiles[tileID].normal[tileOfs] = incomingN;
-        auto hitIDs = rayQueue.currentGen.hitIDs;
         if (auxTiles.depth)
-          auxTiles.depth[tileID].f[tileOfs]   = incomingZ;
+          auxTiles.depth[tileID].f[tileOfs]   =
+            //incomingZ;
+            hitIDs[tid].depth;
         if (auxTiles.primID)
           auxTiles.primID[tileID].ui[tileOfs] = hitIDs[tid].primID;
         if (auxTiles.objID)

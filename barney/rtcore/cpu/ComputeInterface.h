@@ -83,7 +83,7 @@ namespace BARNEY_NS {
 
 
     struct ComputeInterface {
-      inline vec3ui launchIndex() const
+      inline vec3ui getLaunchIndex() const
       {
         return getThreadIdx() + getBlockIdx() * getBlockDim();
       }

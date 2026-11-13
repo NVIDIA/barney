@@ -40,7 +40,7 @@ namespace BARNEY_NS {
     struct ComputeInterface
     {
 #if RTC_DEVICE_CODE
-      inline __device__ vec3ui launchIndex() const
+      inline __device__ vec3ui getLaunchIndex() const
       {
         return getThreadIdx() + getBlockIdx() * getBlockDim();
       }

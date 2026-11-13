@@ -46,10 +46,7 @@ namespace BARNEY_NS {
         // ------------------------------------------------------------------
         if (globals.hitIDs) {
           /* ID buffer rendering writes IDs no matter what transparency */
-          const int rayID
-            = ti.getLaunchIndex().x
-            + ti.getLaunchDims().x
-            * ti.getLaunchIndex().y;
+          const int rayID = ti.getLaunchIndex().x;
           if (depth < globals.hitIDs[rayID].depth) {
             globals.hitIDs[rayID].primID = primID;
             globals.hitIDs[rayID].instID

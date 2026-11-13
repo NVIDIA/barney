@@ -300,7 +300,7 @@ namespace BARNEY_NS {
                              int globalIndexStep)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= numActiveTiles) return;
     
       int tileID = tid * globalIndexStep + globalIndex;
