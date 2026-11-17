@@ -194,7 +194,6 @@ namespace BARNEY_NS {
     ci.blockIdx.y = taskID / (_nb.x);                                   \
     taskID -= ci.blockIdx.y*(_nb.x);                                    \
     ci.blockIdx.x = taskID;                                             \
-    ci.blockIdx = {(unsigned)taskID,0u,0u};                             \
     ci.threadIdx = {0u,0u,0u};                                          \
     for (ci.threadIdx.z=0;ci.threadIdx.z<_bs.z;ci.threadIdx.z++)        \
       for (ci.threadIdx.y=0;ci.threadIdx.y<_bs.y;ci.threadIdx.y++)      \
