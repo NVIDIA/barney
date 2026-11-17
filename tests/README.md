@@ -17,8 +17,7 @@ registers two tests:
 - `tangent_generation_*`: hit-time frame behavior, authored tangent precedence
   and interpolation, vertex/face-varying attributes, input updates, material
   changes, clearcoat-only mapping, finite fallback for invalid/missing UVs, and
-  a mirrored nonuniform instance transform. It also checks two logical devices
-  and, separately, the still-available standalone generator helper.
+  a mirrored nonuniform instance transform. It also checks two logical devices.
 - `anari_tangent_generation_*`: ANARI triangle/quad uploads, indexed/nonindexed
   meshes, authored tangent and face-normal corner expansion, format conversion,
   and array-unmap updates. An ANARI world instance-only transform update checks

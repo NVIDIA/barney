@@ -81,8 +81,6 @@ set(HOST_SOURCES
   geometry/Geometry.cpp
   geometry/Triangles.h
   geometry/Triangles.cpp
-  geometry/TangentFrames.h
-  geometry/TangentFrames.cu
   geometry/Cylinders.h
   geometry/Cylinders.cpp
   geometry/Capsules.h

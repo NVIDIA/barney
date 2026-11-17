@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "native/LocalContext.h"
-#include "native/geometry/TangentFrames.h"
 #include "tangent_hits.h"
 #include <iostream>
 
@@ -157,29 +156,6 @@ static void fallbackAndTransforms(Context &context)
               {-.4f,.9f,1.f},mirrored);
 }
 
-// The standalone generator is still a supported helper, but its output is
-// not attached to meshes by commit(). Keep its direct coverage separate.
-static void standaloneGenerator(Context &context)
-{
-  Mesh mesh(context);
-  mesh.triangle->commit();
-  for (auto *device : *mesh.triangle->devices) {
-    Triangles::DD dd;
-    mesh.triangle->writeDD(dd,device);
-    TangentMesh input{dd.vertices,nullptr,3,1,dd.attributes.normalAttribute,
-                      dd.attributes.attribute[0]};
-    auto buffer = generateTangentFrames(device->rtc,input);
-    vec4f output[3];
-    device->rtc->copyAsync(output,buffer->getDD(),sizeof(output));
-    device->sync();
-    device->rtc->freeBuffer(buffer);
-    for (auto t : output) {
-      expectNormal(vec3f(t.x,t.y,t.z),{1,0,0},"standalone nonindexed generator");
-      require(t.w == 1.f,"standalone generator handedness");
-    }
-  }
-}
-
 int main()
 {
   try {
@@ -189,7 +165,6 @@ int main()
     authoredFrames(*context);
     materialGating(*context);
     fallbackAndTransforms(*context);
-    standaloneGenerator(*context);
     const int gpus[] = {0,0};
     std::unique_ptr<Context> replicated(LocalContext::create(1,&rank,2,gpus));
     scopesAndUpdates(*replicated);
