@@ -113,7 +113,7 @@ namespace BARNEY_NS {
         (eg, if the system actually has optix support in the driver),
         and bail out with an exception if it cannot. */
     BARNEY_LIBRARY_INTERFACE
-    ::anari::LibraryImpl *createAnariLibrary(void *lib,
+    ::anari::LibraryImpl *createAnariLibrary(void *_libShouldBeNull,
                                              ANARIStatusCallback statusCallback,
                                              const void *scbPtr)
     {
