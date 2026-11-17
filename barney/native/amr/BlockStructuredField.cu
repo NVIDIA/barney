@@ -19,6 +19,7 @@ namespace BARNEY_NS {
                          MCIsoSurfaceAccel<BlockStructuredCuBQLSampler>::DD,false,false);
 
     enum { MC_GRID_SIZE = 512 };
+    enum { buildMC_numThreadsPerBlock = 1024 };
 
     BlockStructuredField::PLD *BlockStructuredField::getPLD(Device *device) 
     {
@@ -34,25 +35,28 @@ namespace BARNEY_NS {
                              MCGrid::DD               grid)
     {
 #if RTC_DEVICE_CODE
-      const int tid = ci.getLaunchIndex().x;
-      if (tid >= field.numBlocks) return;
+      const int blockIdx = ci.getBlockIdx().x;//getLaunchIndex().x;
+      if (blockIdx >= field.numBlocks) return;
 
-      const Block block = Block::getFrom(field,tid);
+      const Block block = Block::getFrom(field,blockIdx);
 
       vec3i numCells = block.dims;
-
+      
       const box3f worldBox = getBox(field.worldBounds);
-      for (int z=0;z<numCells.z;z++) {
-        for (int y=0;y<numCells.y;y++) {
-          for (int x=0;x<numCells.x;x++) {
-            const box3f cb3 = block.cellBounds({x,y,z});
-            const float scalar = block.getScalar({x,y,z});
-            const box4f cellBounds(vec4f(cb3.lower,scalar),
-                                   vec4f(cb3.upper,scalar));
-            rasterBox(grid,worldBox,cellBounds);
-          }
+
+      int numLinearCells = numCells.x*numCells.y*numCells.z;
+      for (int cid=ci.getThreadIdx().x;cid<numLinearCells;
+           cid+=buildMC_numThreadsPerBlock)
+        {
+          int z = cid / (numCells.x*numCells.y);
+          int y = (cid-z*(numCells.x*numCells.y)) / numCells.x;
+          int x = cid % numCells.x;
+          const box3f cb3 = block.cellBounds({x,y,z});
+          const float scalar = block.getScalar({x,y,z});
+          const box4f cellBounds(vec4f(cb3.lower,scalar),
+                                 vec4f(cb3.upper,scalar));
+          rasterBox(grid,worldBox,cellBounds);
         }
-      }
 #endif
     }
   
@@ -99,6 +103,7 @@ namespace BARNEY_NS {
       //        dims.x,
       //        dims.y,
       //        dims.z);
+
       grid.resize(dims);
       grid.gridOrigin = worldBounds.lower;
       grid.gridSpacing = worldBounds.size() * rcp(vec3f(dims));
@@ -108,13 +113,14 @@ namespace BARNEY_NS {
       for (auto device : *devices) {
         __rtc_launch(device->rtc,
                      BSField_rasterGrids,
-                     dru(numBlocks,1024),1024,
+                     /* one thread block per amr block */numBlocks,
+                     /* 1k threads per amr block */buildMC_numThreadsPerBlock,
                      this->getDD(device),grid.getDD(device));
       }
     
       for (auto device : *devices) 
         device->sync();
-    
+
       return mcGrid;
     }
   
