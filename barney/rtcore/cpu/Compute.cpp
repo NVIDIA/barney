@@ -49,6 +49,22 @@ namespace BARNEY_NS {
       this->barrier.arrive_and_wait();
     }
 
+    template<typename Kernel>
+    void parallel_for_3D(Device *device, vec3ui dims, const Kernel &lambda)
+    {
+      LaunchSystem *ls = ((BARNEY_NS::rtc::Device *)device)->ls;
+      int numTotal = dims.x*dims.y*dims.z;
+      TaskWrapper task([&](int tid)
+      {
+        // printf("in parallel %i / %i %i %i\n",tid,dims.x,dims.y,dims.z);
+        int ix = tid % dims.x;
+        int iz = tid / (dims.x * dims.y);
+        int iy = (tid / dims.x) % dims.y;
+        lambda(vec3ui(ix,iy,iz));
+      });
+      ls->launchAndWait(numTotal,&task);
+    }
+
     void TraceKernel2D::launch(vec2i launchDims,
                                const void *dd) 
     {
@@ -93,22 +109,6 @@ namespace BARNEY_NS {
         // ------------------------------------------------------------------
         barrier.arrive_and_wait();
       }
-    }
-    
-    template<typename Kernel>
-    void parallel_for_3D(Device *device, vec3ui dims, const Kernel &lambda)
-    {
-      LaunchSystem *ls = ((BARNEY_NS::rtc::Device *)device)->ls;
-      int numTotal = dims.x*dims.y*dims.z;
-      TaskWrapper task([&](int tid)
-      {
-        // printf("in parallel %i / %i %i %i\n",tid,dims.x,dims.y,dims.z);
-        int ix = tid % dims.x;
-        int iz = tid / (dims.x * dims.y);
-        int iy = (tid / dims.x) % dims.y;
-        lambda(vec3ui(ix,iy,iz));
-      });
-      ls->launchAndWait(numTotal,&task);
     }
     
   }
