@@ -49,6 +49,23 @@ namespace BARNEY_NS {
       this->barrier.arrive_and_wait();
     }
 
+    void TraceKernel2D::launch(vec2i launchDims,
+                               const void *dd) 
+    {
+      parallel_for_3D
+        (device,vec3ui(launchDims.x,launchDims.y,1),
+         [&](vec3ui bid) {
+           int ix = bid.x;
+           int iy = bid.y;
+           TraceInterface ci;
+           ci.launchIndex = vec3i(ix,iy,0);
+           ci.launchDimensions = {launchDims.x,launchDims.y,1};
+           ci.lpData = dd;
+           kernelFct(ci);
+         });
+    }
+      
+    
     LaunchSystem *createLaunchSystem() { return new LaunchSystem; }
     
     void LaunchSystem::threadFct()
