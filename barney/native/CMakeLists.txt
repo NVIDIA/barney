@@ -81,8 +81,6 @@ set(HOST_SOURCES
   geometry/Geometry.cpp
   geometry/Triangles.h
   geometry/Triangles.cpp
-  geometry/TangentFrames.h
-  geometry/TangentFrames.cu
   geometry/Cylinders.h
   geometry/Cylinders.cpp
   geometry/Capsules.h
@@ -233,12 +231,16 @@ if (BARNEY_BUILD_BSDF_TESTS)
 endif()
 
 if (BARNEY_BUILD_TANGENT_TESTS)
+  set(TANGENT_HIT_SOURCE ${PROJECT_SOURCE_DIR}/tests/tangent_hits.cu)
+  rtc_configure_source(${TANGENT_HIT_SOURCE})
   add_executable(tangent_generation_${backend}
-    ${PROJECT_SOURCE_DIR}/tests/tangent_generation.cpp)
+    ${PROJECT_SOURCE_DIR}/tests/tangent_generation.cpp
+    ${TANGENT_HIT_SOURCE})
   target_link_libraries(tangent_generation_${backend} PRIVATE barney_${backend}_static)
   rtc_library_properties(tangent_generation_${backend})
   add_executable(anari_tangent_generation_${backend}
-    ${PROJECT_SOURCE_DIR}/tests/anari_tangent_generation.cpp)
+    ${PROJECT_SOURCE_DIR}/tests/anari_tangent_generation.cpp
+    ${TANGENT_HIT_SOURCE})
   target_link_libraries(anari_tangent_generation_${backend} PRIVATE
     anari_library_barney_${backend}_static)
   rtc_library_properties(anari_tangent_generation_${backend})

@@ -1,3 +1,38 @@
+# Hit-time tangent tests
+
+Enable `BARNEY_BUILD_TANGENT_TESTS` in a CPU or GPU backend build:
+
+```sh
+cmake -S . -B _out/tangent-cpu \
+  -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_OPTIX=OFF \
+  -DBARNEY_BUILD_TANGENT_TESTS=ON
+cmake --build _out/tangent-cpu --parallel
+ctest --test-dir _out/tangent-cpu -R tangent --output-on-failure
+```
+
+For native CUDA, use a separate build directory with
+`-DBARNEY_BACKEND_CPU=OFF -DBARNEY_BACKEND_CUDA=ON`. Each enabled backend
+registers two tests:
+
+- `tangent_generation_*`: hit-time frame behavior, authored tangent precedence
+  and interpolation, vertex/face-varying attributes, input updates, material
+  changes, clearcoat-only mapping, finite fallback for invalid/missing UVs, and
+  a mirrored nonuniform instance transform. It also checks two logical devices.
+- `anari_tangent_generation_*`: ANARI triangle/quad uploads, indexed/nonindexed
+  meshes, authored tangent and face-normal corner expansion, format conversion,
+  and array-unmap updates. An ANARI world instance-only transform update checks
+  that native mesh input identities remain unchanged.
+  Rays traverse the production native intersection/material path after ANARI
+  translation, and mapped normals are checked against hand-derived values and
+  equivalent authored frames. This does not exercise ANARI frame rendering.
+
+These tests inspect the packed BSDF normals from actual hits, not persistent
+mesh-generated tangent arrays: mesh commit no longer creates those arrays.
+The `1e-3` normal tolerance accommodates half-precision BSDF storage. No images,
+lighting, path integration, performance or smooth tangent continuity across
+neighbouring faces are validated. GPU tests use allocation-local device 0;
+HIP/HIPRT and MPI have not been verified.
+
 # Numerical packed-BSDF tests
 
 `bsdf_quality.cu` exercises the production Lambertian, PhysicallyBased (PBR),

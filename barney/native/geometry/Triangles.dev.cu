@@ -107,6 +107,57 @@ namespace BARNEY_NS {
         hitData.worldShadingNormal
           = normalizeSurfaceNormal(ti.transformNormalFromObjectToWorldSpace
           ((const vec3f&)hitData.objectNormal));
+
+        const DeviceMaterial &material
+          = world.materials[self.materialID];
+
+        // If the application did not provide tangents, derive the UV frame
+        // only for hits whose material actually uses a normal map. This
+        // avoids a persistent float4 per triangle corner and the much larger
+        // tangent-generation scratch allocation.
+        if (hitData.objectTangent.w == 0.f && material.usesTangentFrame()) {
+          const auto &uvs = self.attributes.attribute[0];
+          vec3i uvIndices;
+          bool varyingUVs = true;
+          if (uvs.scope == GeometryAttribute::PER_VERTEX)
+            uvIndices = triangle;
+          else if (uvs.scope == GeometryAttribute::FACE_VARYING)
+            uvIndices = vec3i(3*primID)+vec3i(0,1,2);
+          else
+            varyingUVs = false;
+
+          if (varyingUVs) {
+            const vec4f uv0 = uvs.fromArray.valueAt(uvIndices.x,dbg);
+            const vec4f uv1 = uvs.fromArray.valueAt(uvIndices.y,dbg);
+            const vec4f uv2 = uvs.fromArray.valueAt(uvIndices.z,dbg);
+            const float du1 = uv1.x-uv0.x;
+            const float dv1 = uv1.y-uv0.y;
+            const float du2 = uv2.x-uv0.x;
+            const float dv2 = uv2.y-uv0.y;
+            const float det = du1*dv2-dv1*du2;
+            if (isfinite(det) && fabsf(det) > 1e-20f) {
+              const vec3f e1 = v1-v0;
+              const vec3f e2 = v2-v0;
+              const vec3f tangent = (e1*dv2-e2*dv1)/det;
+              const vec3f bitangent = (e2*du1-e1*du2)/det;
+              const float tangentLength2 = dot(tangent,tangent);
+              const float bitangentLength2 = dot(bitangent,bitangent);
+              if (isfinite(tangentLength2) && tangentLength2 > 1e-20f
+                  && isfinite(bitangentLength2)
+                  && bitangentLength2 > 1e-20f) {
+                const vec3f T = tangent/sqrtf(tangentLength2);
+                const vec3f objectShadingNormal
+                  = normalize((const vec3f&)hitData.objectNormal);
+                const float handedness
+                  = dot(cross(objectShadingNormal,T),bitangent) < 0.f
+                  ? -1.f : 1.f;
+                hitData.objectTangent
+                  = vec4f(T.x,T.y,T.z,handedness);
+              }
+            }
+          }
+        }
+
         // Tangents transform as vectors (model matrix), unlike normals. w
         // carries glTF handedness; it is interpolated per-vertex so collapse
         // it back to a sign. w==0 means no tangent array was set.
@@ -119,9 +170,6 @@ namespace BARNEY_NS {
           // once here, keeping shared object-space tangents unchanged.
           hitData.worldTangent.w = handedness * world.instanceOrientations[instID];
         }
-
-        const DeviceMaterial &material
-          = world.materials[self.materialID];
       
         const float coverage
           = material.coverage(hitData,world.samplers,dbg);
