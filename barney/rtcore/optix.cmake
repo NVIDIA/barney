@@ -75,6 +75,6 @@ function(rtc_build_device_sources libname)
   rtc_library_properties(${libname})
 endfunction()
 
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/cudaCommon)# buildDir_rtc_cudaCommon)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/optix)# buildDir_rtc_optix)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/cudaCommon buildDir_cudaCommon_optix)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/optix)
 

@@ -17,6 +17,16 @@ option(BARNEY_MPI            "Enable MPI Support"          OFF)
 option(BARNEY_BUILD_BSDF_TESTS "Build numerical packed BSDF quality tests" OFF)
 option(BARNEY_BUILD_TANGENT_TESTS "Build numerical tangent generation tests" OFF)
 
+function(print_config backend)
+  string(TOUPPER ${backend} BACKEND)
+  message("#barney: BARNEY_BACKEND_${BACKEND} = ${BARNEY_BACKEND_${BACKEND}}")
+endfunction()	    			      
+print_config(cpu)
+print_config(cuda)
+print_config(optix)
+print_config(hip)
+print_config(hiprt)
+
 if (NOT (BARNEY_BACKEND_CPU OR BARNEY_BACKEND_CUDA 
          OR BARNEY_BACKEND_OPTIX OR BARNEY_BACKEND_HIP OR BARNEY_BACKEND_HIPRT))
   message(FATAL_ERROR "No back-end selected, nothing will be built."
@@ -309,7 +319,7 @@ set(BARNEY_CMAKE_INSTALL_DESTINATION
 
 
 
-# build_barney(config device) -> tests if config exists as a target,
+# build_barney(backendName) -> tests if config exists as a target,
 # and if so build device (and mpi device, if enabled) with this
 # config. This builds only one device, specific to the given
 # ${backend}, and named barney_{backend}. in addition to the
@@ -318,10 +328,12 @@ set(BARNEY_CMAKE_INSTALL_DESTINATION
 # device, not the anari library or entrypoint,t hus allowing us to
 # link those same devices also the multi-device 'barney' library
 function(build_barney backend)
+  message("#barney: checking for backend '${backend}'")
   string(TOUPPER ${backend} BACKEND)
   if (NOT (${BARNEY_BACKEND_${BACKEND}}))
     message("#barney: backend '${backend}' disabled by user request")
   else()
+    message("#barney: building backend '${backend}' in build_barney_${backend}")
     add_subdirectory(barney build_barney_${backend})
     # ==================================================================
     # now finally, link the respective single-backend

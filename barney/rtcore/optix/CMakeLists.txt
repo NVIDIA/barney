@@ -12,8 +12,6 @@ add_library(barney_rtc_optix STATIC
 target_link_libraries(barney_rtc_optix PUBLIC
   barney_config
   barney_rtc_cudaCommon_${backend} 
-  #  barney_rtc_optix
-  #  $<BUILD_INTERFACE:cuBQL_cuda_float3_static>
   cuBQL
   owl::owl_static
 )

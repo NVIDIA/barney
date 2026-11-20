@@ -8,6 +8,7 @@
 #include <map>
 #include <string>
 #include "owl/common/owl-common.h"
+#include "barneyDeviceConfig.h"
 
 #ifdef ANARI_LIBRARY_BARNEY_STATIC_DEFINE
 #  define BARNEY_LIBRARY_INTERFACE
@@ -33,6 +34,13 @@
 #    endif
 #  endif
 #endif
+
+#define BARNEY_NS_OPTIX     barney_optix
+#define BARNEY_NS_CUDA      barney_cuda
+#define BARNEY_NS_CPU       barney_cpu
+#define BARNEY_NS_HIP       barney_hip
+#define BARNEY_NS_HIPRT     barney_hiprt
+
 
 #if BARNEY_BACKEND_OPTIX
 // ------------------------------------------------------------------
@@ -67,88 +75,6 @@ barney::BarneyBaseDevice *createDevice_barney_cpu(ANARILibrary,const char *);
 #endif
 
 namespace barney {
-
-//   struct BarneyMultiLibrary : public ::anari::LibraryImpl
-//   {
-//     BarneyMultiLibrary(void *lib,
-//                        ANARIStatusCallback defaultStatusCB,
-//                        const void *statusCBPtr);
-
-//     ANARIDevice newDevice(const char *subtype) override;
-//     const char **getDeviceExtensions(const char *deviceType) override;
-//   };
-
-//   // Definitions ////////////////////////////////////////////////////////////////
-
-//   BarneyMultiLibrary::BarneyMultiLibrary(void *lib,
-//                                ANARIStatusCallback defaultStatusCB,
-//                                const void *statusCBPtr)
-//     : ::anari::LibraryImpl(lib, defaultStatusCB, statusCBPtr)
-//   {}
-
-  
-//   ANARIDevice BarneyMultiLibrary::newDevice(const char *subType)
-//   {
-//     PING; PRINT(subType);
-    
-//     ANARILibrary lib = this_library();
-// #if BARNEY_BACKEND_OPTIX
-//     try { return (ANARIDevice)createDevice_barney_optix(lib,subType); }
-//     catch (...) {};
-// #endif
-// #if BARNEY_BACKEND_CUDA
-//     try { return (ANARIDevice)createDevice_barney_cuda(lib,subType); }
-//     catch (...) {};
-// #endif
-// #if BARNEY_BACKEND_CPU
-//     try { return (ANARIDevice)createDevice_barney_cpu(lib,subType); }
-//     catch (...) {};
-// #endif
-//     std::cout << "Warning- couldn't create _any_ barney backend device!?"
-//               << std::endl;
-//     return (ANARIDevice)0;
-//   }
-
-//   const char **BarneyMultiLibrary::getDeviceExtensions(const char *_deviceType)
-//   {
-//     const std::string deviceType
-//       = _deviceType
-//       ? _deviceType
-//       : "default";
-//     static std::map<std::string,const char **> alreadyFound;
-//     if (alreadyFound.find(deviceType) != alreadyFound.end())
-//       return alreadyFound[deviceType];
-//     PING;
-//     ANARIDevice dev = newDevice(deviceType.c_str());
-//     if (!dev) {
-//       alreadyFound[deviceType] = nullptr;
-//       return nullptr;
-//     }
-//     BarneyBaseDevice *base = (BarneyBaseDevice*)dev;
-//     alreadyFound[deviceType] = base->extensions();
-
-//     return alreadyFound[deviceType];
-//   }
-
-    // /*! helper entry-point for _directly_ creating a banari device
-    //   without having to go through the dynamic-library
-    //   'anariLoadLibrary' mechanism. This is used in pynari, to allow
-    //   static linking of anari sdk */
-    // extern "C" ANARIDevice createAnariDeviceBarney()
-    // {
-    //   ANARIDevice dev = 0;
-    //   try {
-    //     dev = (ANARIDevice) new BarneyDevice();
-    //     return dev;
-    //   } catch (std::exception &err) {
-    //     std::cerr << "#banari: exception creating anari 'barney' GPU device: "
-    //               << err.what() << std::endl;
-    //     return 0;
-    //   }
-    // }
-
-
-  
 } // namespace barney
 
 #if BARNEY_BACKEND_OPTIX
@@ -180,6 +106,7 @@ namespace BARNEY_NS_CPU { namespace anari {
   }}
 #endif
 
+
 extern "C" BARNEY_LIBRARY_INTERFACE
 ANARI_DEFINE_LIBRARY_ENTRYPOINT(barney, handle, scb, scbPtr)
 {
@@ -194,6 +121,10 @@ ANARI_DEFINE_LIBRARY_ENTRYPOINT(barney, handle, scb, scbPtr)
 # endif
 # if BARNEY_BACKEND_HIP
   if (auto lib = BARNEY_NS_HIP::anari::createAnariLibrary(handle,scb,scbPtr))
+    return (ANARILibrary)lib;
+# endif
+# if BARNEY_BACKEND_HIPRT
+  if (auto lib = BARNEY_NS_HIPRT::anari::createAnariLibrary(handle,scb,scbPtr))
     return (ANARILibrary)lib;
 # endif
 # if BARNEY_BACKEND_CPU

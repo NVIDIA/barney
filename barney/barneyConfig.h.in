@@ -31,11 +31,6 @@
 #define BARNEY_BACKEND_STRING BARNEY_TOSTRING(@BARNEY_BACKEND_NAME@)
 #define BARNEY_DEVICE_NAME  barney_@BARNEY_BACKEND_NAME@
 #define BARNEY_NS           barney_@BARNEY_BACKEND_NAME@
-#define BARNEY_NS_OPTIX     barney_optix
-#define BARNEY_NS_CUDA      barney_cuda
-#define BARNEY_NS_CPU       barney_cpu
-#define BARNEY_NS_HIP       barney_hip
-#define BARNEY_NS_HIPRT     barney_hiprt
 #define CREATE_DEVICE_FUNCTION_NAME createDevice_barney_@BARNEY_BACKEND_NAME@
 
 // the symbol anari/helium expects to find for the creator function
