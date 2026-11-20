@@ -63,6 +63,7 @@ jobs:
         with:
           config: ${{ matrix.config }}
           install-prefix: ${{ github.workspace }}\install
+          build-deps-path: ${{ github.workspace }}\install
           generator: ${{ matrix.generator }}
 
       - name: CMake Configure barney
