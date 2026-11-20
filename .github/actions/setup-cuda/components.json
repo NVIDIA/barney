@@ -1,0 +1,65 @@
+{
+  "components": {
+    "cuda_nvcc": {
+      "required": true,
+      "description": "NVIDIA CUDA Compiler",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ]
+    },
+    "cuda_cudart": {
+      "required": true,
+      "description": "CUDA Runtime",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ]
+    },
+    "cuda_crt": {
+      "required": false,
+      "description": "C Runtime headers - only in CUDA 13+, bundled in cuda_cudart for 12.x",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ],
+      "min_version": "13.0.0"
+    },
+    "libnvvm": {
+      "required": false,
+      "description": "NVVM library (cicc compiler) - only in CUDA 13+, bundled in cuda_nvcc for 12.x",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ],
+      "min_version": "13.0.0"
+    },
+    "cuda_cccl": {
+      "required": true,
+      "description": "CUDA C++ Core Libraries (Thrust/CUB/libcudacxx)",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ]
+    },
+    "cuda_nvml_dev": {
+      "required": true,
+      "description": "NVML development headers",
+      "platforms": [
+        "linux-x86_64",
+        "windows-x86_64"
+      ]
+    },
+    "visual_studio_integration": {
+      "required": true,
+      "description": "Visual Studio build integration (MSBuild rules)",
+      "platforms": [
+        "windows-x86_64"
+      ]
+    }
+  },
+  "supported_versions": [
+    "12.4.1",
+    "13.0.2"
+  ]
+}

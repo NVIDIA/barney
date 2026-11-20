@@ -18,25 +18,21 @@ jobs:
           - os: windows-2022
             cuda: "12.6.2"
             visual-studio: "Visual Studio 17 2022"
-            shell: "powershell"
             config: Release
             build_flags:
           - os: windows-2025
             cuda: "13.2.0"
             visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
             config: Release
             build_flags:
           - os: windows-2025
             cuda: "13.2.0"
             visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
             config: Debug
             build_flags:
           - os: windows-2025
             cuda: "13.2.0"
             visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
             config: Debug
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
@@ -50,41 +46,24 @@ jobs:
         with:
           submodules: true
 
-      - name: Install CUDA
-        if: contains(matrix.cuda, '.')
-        uses: Jimver/cuda-toolkit@v0.2.36
-        id: cuda-toolkit
-        with:
-          cuda: ${{ matrix.cuda }}
-          method: 'local'
-          sub-packages: '["nvcc", "cudart"]'
-          log-file-suffix: '${{matrix.os}}_${{matrix.cuda}}.txt'
+      - name: Setup MSVC (Windows)
+        uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Checkout ANARI-SDK
-        uses: actions/checkout@v5
+      - name: Setup CUDA Toolkit
+        uses: ./.github/actions/setup-cuda
         with:
-          repository: "KhronosGroup/ANARI-SDK"
-          path: ${{github.workspace}}/anari_sdk
+          cuda-version: ${{ matrix.cuda }}
 
       - name: create shared install dir
         run: |
           mkdir ${{github.workspace}}\install
 
-      - name: CMake Configure ANARI-SDK
-        run: |
-          mkdir ${{github.workspace}}\anari_sdk\build
-          cd ${{github.workspace}}\anari_sdk\build
-          cmake -DCMAKE_BUILD_TYPE=${{matrix.config}} -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
-
-      - name: build ANARI-SDK
-        run: |
-          cd ${{github.workspace}}\anari_sdk\build
-          cmake --build . --config ${{ matrix.config }}
-
-      - name: install ANARI-SDK
-        run: |
-          cd ${{github.workspace}}\anari_sdk\build
-          cmake --install . --config ${{ matrix.config }}
+      - name: Build ANARI-SDK
+        uses: ./.github/actions/build-anari-sdk
+        with:
+          config: ${{ matrix.config }}
+          install-prefix: ${{ github.workspace }}\install
+          generator: ${{ matrix.generator }}
 
       - name: CMake Configure barney
         run: |
