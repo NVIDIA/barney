@@ -7,9 +7,7 @@
 #include "native/DeviceGroup.h"
 #include "native/volume/TransferFunction.h"
 #include "native/common/math.h"
-#if BARNEY_USE_MULTI_SCATTERING
 #include "native/volume/PrincipledVolume.h"
-#endif
 
 namespace BARNEY_NS {
   namespace native {

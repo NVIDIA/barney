@@ -18,7 +18,7 @@ namespace BARNEY_NS {
                        int N)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= N) return;
 
       rayOnly[tid].org = rayQueue[tid].org;
@@ -37,7 +37,7 @@ namespace BARNEY_NS {
                        int N)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= N) return;
 
       hitOnly[tid].tHit = rayQueue[tid].tMax;
@@ -62,7 +62,7 @@ namespace BARNEY_NS {
                              int N)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= N) return;
 
       rayQueue[tid].org = rayOnly[tid].org;
@@ -71,7 +71,7 @@ namespace BARNEY_NS {
       rayQueue[tid].isInMedium = rayOnly[tid].isInMedium;
       rayQueue[tid].isShadowRay = rayOnly[tid].isShadowRay;
       rayQueue[tid]._dbg = rayOnly[tid].dbg;
-      rayQueue[tid].bsdfType = PackedBSDF::NONE;
+      rayQueue[tid].bsdfType = PackedBSDF::INVALID;
 #endif
     }
   
@@ -83,7 +83,7 @@ namespace BARNEY_NS {
                             int islandSize)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= nRays) return;
 
       Ray ray = rayQueueThisRank[tid];

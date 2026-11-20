@@ -6,7 +6,6 @@
 
 #include "rtcore/optix/Device.h"
 #include "rtcore/optix/Buffer.h"
-#include "rtcore/cudaCommon/ComputeKernel.h"
 // for setPrimCount etc
 #include "rtcore/optix/Geom.h"
 // for buildAccel

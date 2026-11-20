@@ -64,7 +64,7 @@ namespace BARNEY_NS {
                                             int reduceFactor)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= nRays) return;
 
       HitOnly reduced = hitOnly[tid];
@@ -87,7 +87,7 @@ namespace BARNEY_NS {
                                              int reduceFactor)
     {
 #if RTC_DEVICE_CODE
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= nRays) return;
     
       Ray ray = rayQueueThisRank[tid];

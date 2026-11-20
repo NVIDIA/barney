@@ -49,7 +49,8 @@ namespace BARNEY_NS {
     private:
       void cleanup();
 
-      bool        m_valid           {false};
+      bool        m_valid           { false };
+      bool        m_isAltFrame      { false };
       math::uint2 m_size            { 0,0 };
       /*! Actual framebuffer dimensions (from bnFrameBufferGetSize after
         resize). Matches buffer layout so map() reports correct stride. */

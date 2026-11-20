@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "rtcore/cpu/ComputeInterface.h"
-#include "rtcore/cpu/ComputeKernel.h"
 #include <owl/common/parallel/parallel_for.h>
 #include <mutex>
 #include <thread>
@@ -50,6 +49,39 @@ namespace BARNEY_NS {
       this->barrier.arrive_and_wait();
     }
 
+    template<typename Kernel>
+    void parallel_for_3D(Device *device, vec3ui dims, const Kernel &lambda)
+    {
+      LaunchSystem *ls = ((BARNEY_NS::rtc::Device *)device)->ls;
+      int numTotal = dims.x*dims.y*dims.z;
+      TaskWrapper task([&](int tid)
+      {
+        // printf("in parallel %i / %i %i %i\n",tid,dims.x,dims.y,dims.z);
+        int ix = tid % dims.x;
+        int iz = tid / (dims.x * dims.y);
+        int iy = (tid / dims.x) % dims.y;
+        lambda(vec3ui(ix,iy,iz));
+      });
+      ls->launchAndWait(numTotal,&task);
+    }
+
+    void TraceKernel2D::launch(vec2i launchDims,
+                               const void *dd) 
+    {
+      parallel_for_3D
+        (device,vec3ui(launchDims.x,launchDims.y,1),
+         [&](vec3ui bid) {
+           int ix = bid.x;
+           int iy = bid.y;
+           TraceInterface ci;
+           ci.launchIndex = vec3i(ix,iy,0);
+           ci.launchDimensions = {launchDims.x,launchDims.y,1};
+           ci.lpData = dd;
+           kernelFct(ci);
+         });
+    }
+      
+    
     LaunchSystem *createLaunchSystem() { return new LaunchSystem; }
     
     void LaunchSystem::threadFct()
@@ -79,97 +111,5 @@ namespace BARNEY_NS {
       }
     }
     
-    template<typename Kernel>
-    void parallel_for_3D(Device *device, vec3ui dims, const Kernel &lambda)
-    {
-      LaunchSystem *ls = ((BARNEY_NS::rtc::Device *)device)->ls;
-      int numTotal = dims.x*dims.y*dims.z;
-      TaskWrapper task([&](int tid)
-      {
-        // printf("in parallel %i / %i %i %i\n",tid,dims.x,dims.y,dims.z);
-        int ix = tid % dims.x;
-        int iz = tid / (dims.x * dims.y);
-        int iy = (tid / dims.x) % dims.y;
-        lambda(vec3ui(ix,iy,iz));
-      });
-      ls->launchAndWait(numTotal,&task);
-    }
-    
-                         
-    
-    void ComputeKernel1D::launch(unsigned int numBlocks,
-                                 unsigned int blockSize,
-                                 const void *dd)
-    {
-      parallel_for_3D
-        (device,vec3ui(numBlocks,1,1),
-         // (numBlocks,
-         [&](vec3ui bid){
-           ComputeInterface ci;
-           ci.gridDim = vec3ui(numBlocks,1u,1u);
-           ci.blockIdx = bid;
-           ci.blockDim = vec3ui(blockSize,1u,1u);
-           ci.threadIdx = vec3ui(0);
-           for (ci.threadIdx.x=0;ci.threadIdx.x<blockSize;ci.threadIdx.x++)
-             computeFct(ci,dd);
-         });
-    }
-    
-    void ComputeKernel2D::launch(vec2ui numBlocks,
-                                 vec2ui blockSize,
-                                 const void *dd)
-    {
-      parallel_for_3D
-        (device,vec3ui(numBlocks.x,numBlocks.y,1),
-         // (numBlocks,
-         [&](vec3ui bid){
-           ComputeInterface ci;
-           ci.gridDim = vec3ui(numBlocks.x,numBlocks.y,1);
-           ci.blockIdx = bid;
-           ci.blockDim = vec3ui(blockSize.x,blockSize.y,1);
-           ci.threadIdx = vec3ui(0);
-           for (ci.threadIdx.y=0;ci.threadIdx.y<blockSize.y;ci.threadIdx.y++)
-             for (ci.threadIdx.x=0;ci.threadIdx.x<blockSize.x;ci.threadIdx.x++)
-               computeFct(ci,dd);
-         });
-    }
-
-    void ComputeKernel3D::launch(vec3ui numBlocks,
-                                 vec3ui blockSize,
-                                 const void *dd)
-    {
-      parallel_for_3D
-        (device,numBlocks,
-         // (numBlocks,
-         [&](vec3ui bid){
-           ComputeInterface ci;
-           ci.gridDim = vec3ui(numBlocks);
-           ci.blockIdx = bid;
-           ci.blockDim = vec3ui(blockSize);
-           ci.threadIdx = vec3ui(0);
-           for (ci.threadIdx.z=0;ci.threadIdx.z<blockSize.z;ci.threadIdx.z++)
-             for (ci.threadIdx.y=0;ci.threadIdx.y<blockSize.y;ci.threadIdx.y++)
-               for (ci.threadIdx.x=0;ci.threadIdx.x<blockSize.x;ci.threadIdx.x++)
-                 computeFct(ci,dd);
-         });
-    }
-      
-
-    void TraceKernel2D::launch(vec2i launchDims,
-                               const void *dd) 
-    {
-      parallel_for_3D
-        (device,vec3ui(launchDims.x,launchDims.y,1),
-         [&](vec3ui bid) {
-           int ix = bid.x;
-           int iy = bid.y;
-           TraceInterface ci;
-           ci.launchIndex = vec3i(ix,iy,0);
-           ci.launchDimensions = {launchDims.x,launchDims.y,1};
-           ci.lpData = dd;
-           kernelFct(ci);
-         });
-    }
-      
   }
 }

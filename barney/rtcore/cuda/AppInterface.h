@@ -6,7 +6,6 @@
 
 #include "rtcore/cuda/Device.h"
 #include "rtcore/cuda/Buffer.h"
-#include "rtcore/cudaCommon/ComputeKernel.h"
 #include "rtcore/cuda/TraceKernel.h"
 // for setPrimCount etc
 #include "rtcore/cuda/Geom.h"

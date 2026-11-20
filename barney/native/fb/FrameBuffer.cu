@@ -14,8 +14,6 @@
 namespace BARNEY_NS {
   namespace native {
     
-    RTC_IMPORT_COMPUTE2D(linearToFixed8);
-
     FrameBuffer::FrameBuffer(Context *context,
                              const DevGroup::SP &devices,
                              const bool isOwner)
@@ -37,7 +35,6 @@ namespace BARNEY_NS {
       Device *device = getDenoiserDevice();
       assert(device);
       denoiser = device->rtc->createDenoiser();
-      linear_toFixed8 = createCompute_linearToFixed8(device->rtc);
     }
 
     FrameBuffer::~FrameBuffer()
@@ -45,8 +42,6 @@ namespace BARNEY_NS {
       freeResources();
       delete denoiser;
       denoiser = 0;
-      delete linear_toFixed8;
-      linear_toFixed8 = 0;
     }
 
     bool FrameBuffer::needHitIDs() const
@@ -108,22 +103,17 @@ namespace BARNEY_NS {
       }      
     }
 
-    struct LinearToFixed8 {
-      uint32_t *out;
-      vec4f    *in;
-      vec2i numPixels;
-      bool SRGB;
-#if RTC_DEVICE_CODE
-      __rtc_device void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-
-#if RTC_DEVICE_CODE
-    __rtc_device void LinearToFixed8::run(const rtc::ComputeInterface &ci)
+    __rtc_global
+    void linearToFixed8(const rtc::ComputeInterface &ci,
+                        uint32_t *out,
+                        vec4f    *in,
+                        vec2i numPixels,
+                        bool SRGB)
     {
-      int ix = ci.getThreadIdx().x+ci.getBlockIdx().x*ci.getBlockDim().x;
+#if RTC_DEVICE_CODE
+      int ix = ci.getLaunchIndex().x;
       if (ix >= numPixels.x) return;
-      int iy = ci.getThreadIdx().y+ci.getBlockIdx().y*ci.getBlockDim().y;
+      int iy = ci.getLaunchIndex().y;
       if (iy >= numPixels.y) return;
       int idx = ix+numPixels.x*iy;
       vec4f v = in[idx];
@@ -131,8 +121,8 @@ namespace BARNEY_NS {
       if (SRGB)
         (vec3f&)v = linear_to_srgb((vec3f&)v);
       out[idx] = make_rgba(v);
-    }
 #endif
+    }
 
     // ------------------------------------------------------------------
     // Nearest-neighbor 2x upscale kernels (for AI upscaling mode)
@@ -221,6 +211,8 @@ namespace BARNEY_NS {
 
     void FrameBuffer::finalizeFrame()
     {
+      if (isAltFrame) return;
+      
       // make sure all devices are done with rendering
       context->syncCheckAll();
       
@@ -263,7 +255,7 @@ namespace BARNEY_NS {
         }
       }
 
-      if (channels & BN_FB_DEPTH)
+      if (channels & BN_FB_DEPTH) 
         gatherAuxChannel(BN_FB_DEPTH);
       if (channels & BN_FB_PRIMID)
         gatherAuxChannel(BN_FB_PRIMID);
@@ -317,10 +309,16 @@ namespace BARNEY_NS {
         case BN_UFIXED8_RGBA_SRGB: {
           bool srgb = (requestedFormat == BN_UFIXED8_RGBA_SRGB);
           vec2ui bs(8,8);
-          LinearToFixed8 args = {
-            (uint32_t*)linearColorChannel, colorSrc, outDims, srgb
-          };
-          linear_toFixed8->launch(divRoundUp(vec2ui(outDims),bs),bs,&args);
+          vec2ui nb = divRoundUp(vec2ui(outDims),bs);
+          __rtc_launch(/* device */
+                       device->rtc,
+                       /* kernel */
+                       linearToFixed8,
+                       /* launch dims */
+                       nb,bs,
+                       /* args */
+                       (uint32_t*)linearColorChannel, colorSrc, outDims, srgb
+                      );
           device->rtc->copy(appMemory,linearColorChannel,
                             outDims.x*outDims.y*sizeof(uint32_t));
         } break;
@@ -435,10 +433,12 @@ namespace BARNEY_NS {
 
     void FrameBuffer::resize(BNDataType colorFormat,
                              vec2i size,
-                             uint32_t channels)
+                             uint32_t channels,
+                             bool isAltFrame)
     {
       this->channels = channels;
       this->colorChannelFormat = colorFormat;
+      this->isAltFrame = isAltFrame;
 
       freeResources();
 
@@ -466,7 +466,7 @@ namespace BARNEY_NS {
         ? sizeof(vec4f)
         : sizeof(uint32_t);
 
-      if (isOwner) {
+      if (isOwner && !isAltFrame) {
         auto rtc = getDenoiserDevice()->rtc;
         int dpNP = numPixels.x * numPixels.y;   // display pixels
         int rpNP = renderPixels.x * renderPixels.y; // render pixels
@@ -518,7 +518,6 @@ namespace BARNEY_NS {
       return (*devices)[0];
     }
 
-    RTC_EXPORT_COMPUTE2D(linearToFixed8,LinearToFixed8);
   }
 }
 

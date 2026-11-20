@@ -10,58 +10,16 @@
 namespace BARNEY_NS {
   namespace native {
 
-    RTC_IMPORT_COMPUTE2D(computeWeights_xy);
-    RTC_IMPORT_COMPUTE1D(computeCDFs_doLine);
-    RTC_IMPORT_COMPUTE1D(normalize_cdf_y);
-  
     EnvMapLight::PLD *EnvMapLight::getPLD(Device *device)
     { return &perLogical[device->contextRank()]; }
 
-    /*! computes an importance sampling weight for each pixel; gets
-      called with one thread per pixel, in a 2d launch */
-    struct ComputeWeights_xy {
-      float *allLines_cdf_x;
-      rtc::TextureObject texture;
-      vec2i textureDims;
-
-#if RTC_DEVICE_CODE
-      inline __rtc_device
-      void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-  
-    /*! this kernel does one thread per line, then this one thread does
-      entire line. not great, but we're not doing this per frame,
-      anyway */
-    struct ComputeCDFs_doLine {
-      float *cdf_y;
-      float *allLines_cdf_x;
-      vec2i textureDims;
-
-#if RTC_DEVICE_CODE
-      inline __rtc_device
-      void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-
-  
-    /*! run by a single thread, to normalize the cdf_y */
-    struct Normalize_cdf_y {
-      float       *cdf_y;
-      const float *allLines_cdf_x;
-      vec2i        textureDims;
-    
-#if RTC_DEVICE_CODE
-      inline __rtc_device
-      void run(const rtc::ComputeInterface &ci);
-#endif
-    };
-
-
-#if RTC_DEVICE_CODE
-    inline __rtc_device
-    void Normalize_cdf_y::run(const rtc::ComputeInterface &ci)
+    __rtc_global
+    void Normalize_cdf_y(const rtc::ComputeInterface &ci,
+                         float       *cdf_y,
+                         const float *allLines_cdf_x,
+                         vec2i        textureDims)
     {
+#if RTC_DEVICE_CODE
       if (ci.getThreadIdx().x != 0) return;
         
       float sum = 0.f;
@@ -80,11 +38,16 @@ namespace BARNEY_NS {
         cdf_y[i] = sum * rcp_sum;
       }
       cdf_y[textureDims.y-1] = 1.f;
+#endif
     }
   
-    inline __rtc_device
-    void ComputeWeights_xy::run(const rtc::ComputeInterface &ci)
+    __rtc_global
+    void ComputeWeights_xy(const rtc::ComputeInterface &ci,
+                           float *allLines_cdf_x,
+                           rtc::TextureObject texture,
+                           vec2i textureDims)
     {
+#if RTC_DEVICE_CODE
       int ix = ci.getThreadIdx().x
         + ci.getBlockIdx().x
         * ci.getBlockDim().x;
@@ -109,11 +72,17 @@ namespace BARNEY_NS {
         }
         
       allLines_cdf_x[ix+textureDims.x*iy] = weight;
+#endif
     }
-  
-    inline __rtc_device
-    void ComputeCDFs_doLine::run(const rtc::ComputeInterface &ci)
+
+    __rtc_global
+    void ComputeCDFs_doLine(const rtc::ComputeInterface &ci,
+                            float *cdf_y,
+                            float *allLines_cdf_x,
+                            vec2i textureDims
+                           )
     {
+#if RTC_DEVICE_CODE
       int tid
         = ci.getThreadIdx().x
         + ci.getBlockIdx().x * ci.getBlockDim().x;
@@ -146,9 +115,9 @@ namespace BARNEY_NS {
         
       float relativeWeightOfLine = sum * sinf(theta);
       cdf_y[y] = relativeWeightOfLine;
-    }
 #endif
-  
+    }
+    
     EnvMapLight::DD EnvMapLight::getDD(Device *device,
                                        const affine3f &xfm) 
     {
@@ -212,38 +181,34 @@ namespace BARNEY_NS {
         /* computes an importance sampling weight for each pixel; gets
            called with one thread per pixel, in a 2d launch */
         {
-          ComputeWeights_xy kernelData = {
-            (float*)pld->allCDFs_x->getDD(),
-            texture->getDD(device),
-            dims
-          };
           vec2ui bs = 16;
           vec2ui nb = divRoundUp(vec2ui(dims),bs);
-          pld->computeWeights_xy
-            ->launch(nb,bs,&kernelData);
+          __rtc_launch(device->rtc,
+                       ComputeWeights_xy,
+                       nb,bs,
+                       (float*)pld->allCDFs_x->getDD(),
+                       texture->getDD(device),
+                       dims);
         }
         /* this kernel will do one thread per line, then this one thread does
            entire line. not great, but we're not doing this per frame,
            anyway */
         {
-          ComputeCDFs_doLine kernelData = {
-            (float*)pld->cdf_y->getDD(),
-            (float*)pld->allCDFs_x->getDD(),
-            dims
-          };
-          pld->computeCDFs_doLine
-            ->launch(dims.y,1024,
-                     &kernelData);
+          __rtc_launch(device->rtc,
+                       ComputeCDFs_doLine,
+                       dims.y,1024,
+                       (float*)pld->cdf_y->getDD(),
+                       (float*)pld->allCDFs_x->getDD(),
+                       dims);       
         }
         /* run by a single thread, to normalize the cdf_y */
         {
-          Normalize_cdf_y kernelArgs = {
-            (float*)pld->cdf_y->getDD(),
-            (float*)pld->allCDFs_x->getDD(),
-            dims
-          };
-          pld->normalize_cdf_y
-            ->launch(1,1,&kernelArgs);
+          __rtc_launch(device->rtc,
+                       Normalize_cdf_y,
+                       1,1,
+                       (float*)pld->cdf_y->getDD(),
+                       (float*)pld->allCDFs_x->getDD(),
+                       dims);
         }
         device->rtc->sync();
       }
@@ -262,13 +227,6 @@ namespace BARNEY_NS {
           = rtc->createBuffer(sizeof(float));
         pld->allCDFs_x
           = rtc->createBuffer(sizeof(float));
-      
-        pld->computeWeights_xy
-          = createCompute_computeWeights_xy(rtc);
-        pld->computeCDFs_doLine
-          = createCompute_computeCDFs_doLine(rtc);
-        pld->normalize_cdf_y
-          = createCompute_normalize_cdf_y(rtc);
       }
     }
 
@@ -342,9 +300,6 @@ namespace BARNEY_NS {
       return false;
     }
   
-    RTC_EXPORT_COMPUTE2D(computeWeights_xy,ComputeWeights_xy);
-    RTC_EXPORT_COMPUTE1D(computeCDFs_doLine,ComputeCDFs_doLine);
-    RTC_EXPORT_COMPUTE1D(normalize_cdf_y,Normalize_cdf_y);
   }
 }
 

@@ -14,6 +14,7 @@
 # define HAVE_NV_FRAMEBUFFER_EXTENSION 1
 #endif
 
+#include "barney/native/fb/FrameBuffer.h"
 
 namespace BARNEY_NS {
   namespace anari {
@@ -69,6 +70,7 @@ namespace BARNEY_NS {
       m_renderer = getParamObject<Renderer>("renderer");
       m_camera = getParamObject<Camera>("camera");
       m_world = getParamObject<World>("world");
+      m_isAltFrame = getParam<int>("isAltFrame",0);
       m_channelTypes.color =
         getParam<anari::DataType>("channel.color", ANARI_UNKNOWN);
       m_channelTypes.depth =
@@ -133,11 +135,18 @@ namespace BARNEY_NS {
           bnSet1i(m_bnFrameBuffer, "upscale", m_renderer->upscale() ? 1 : 0);
           bnCommit(m_bnFrameBuffer);
 
+#if 1
+          native::FrameBuffer *fb
+            = (native::FrameBuffer *)m_bnFrameBuffer;
+          fb->resize(toBarney(m_channelTypes.color),(const vec2i &)size,
+                     requiredChannels,m_isAltFrame);
+#else
           bnFrameBufferResize(m_bnFrameBuffer,
                               toBarney(m_channelTypes.color),
                               size.x,
                               size.y,
                               requiredChannels);
+#endif
           int actualW = 0, actualH = 0;
           bnFrameBufferGetSize(m_bnFrameBuffer, &actualW, &actualH);
           m_displaySize.x = static_cast<uint32_t>(actualW);
@@ -201,6 +210,7 @@ namespace BARNEY_NS {
       auto model = m_world->makeCurrent();
 
       if (m_lastFrameWasFirstFrame && m_lastFrameChannelTypes.depth != ANARI_UNKNOWN
+          && !m_isAltFrame
           && !m_didMapChannel.depth)
         reportMessage(ANARI_SEVERITY_PERFORMANCE_WARNING,
                       "last frame had a depth buffer request, but never mapped it");
