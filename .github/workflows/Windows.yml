@@ -57,8 +57,8 @@ jobs:
         with:
           cuda: ${{ matrix.cuda }}
           method: 'local'
-	  sub-packages: '["nvcc", "cudart"]'
-	  log-file-suffix: '${{matrix.os}}_${{matrix.cuda}}.txt'
+          sub-packages: '["nvcc", "cudart"]'
+          log-file-suffix: '${{matrix.os}}_${{matrix.cuda}}.txt'
 
       - name: Checkout ANARI-SDK
         uses: actions/checkout@v5
