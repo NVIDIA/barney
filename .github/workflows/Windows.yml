@@ -42,7 +42,7 @@ jobs:
       build_dir: "build"
     steps:
       - name: Checkout barney
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
 

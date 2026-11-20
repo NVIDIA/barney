@@ -1,0 +1,53 @@
+name: 'Build ANARI-SDK'
+description: 'Build and cache ANARI-SDK dependency'
+inputs:
+  config:
+    description: 'Build configuration (Release, Debug, etc.)'
+    required: true
+  install-prefix:
+    description: 'Installation prefix for ANARI-SDK'
+    required: true
+  build-deps-path:
+    description: 'Path to the build_deps directory containing CMakeLists.txt'
+    required: false
+    default: 'devices/rtx/cmake/build_deps'
+  generator:
+    description: 'CMake generator to use'
+    required: false
+    default: ''
+outputs:
+  cache-hit:
+    description: 'Whether the cache was hit'
+    value: ${{ steps.cache-anari.outputs.cache-hit }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Cache ANARI-SDK
+      uses: actions/cache@v4
+      id: cache-anari
+      with:
+        path: ${{ inputs.install-prefix }}
+        key: anari-sdk-${{ runner.os }}-${{ inputs.config }}-${{ inputs.generator || 'default' }}-${{ hashFiles('**/build_deps/CMakeLists.txt', '**/build_deps/superbuild_macros.cmake') }}
+
+    - name: Configure ANARI-SDK CMake (with generator)
+      if: steps.cache-anari.outputs.cache-hit != 'true' && inputs.generator != ''
+      shell: bash
+      run: |
+        cmake -LA -G "${{ inputs.generator }}" -B "${{ github.workspace }}/anari_deps_build" \
+          -DCMAKE_BUILD_TYPE=${{ inputs.config }} \
+          -DCMAKE_INSTALL_PREFIX="${{ inputs.install-prefix }}" \
+          "${{ github.workspace }}/${{ inputs.build-deps-path }}"
+
+    - name: Configure ANARI-SDK CMake (default generator)
+      if: steps.cache-anari.outputs.cache-hit != 'true' && inputs.generator == ''
+      shell: bash
+      run: |
+        cmake -LA -B "${{ github.workspace }}/anari_deps_build" \
+          -DCMAKE_BUILD_TYPE=${{ inputs.config }} \
+          -DCMAKE_INSTALL_PREFIX="${{ inputs.install-prefix }}" \
+          "${{ github.workspace }}/${{ inputs.build-deps-path }}"
+
+    - name: Build + install ANARI-SDK
+      if: steps.cache-anari.outputs.cache-hit != 'true'
+      shell: bash
+      run: cmake --build "${{ github.workspace }}/anari_deps_build" --config ${{ inputs.config }}
