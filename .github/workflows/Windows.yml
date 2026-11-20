@@ -52,11 +52,13 @@ jobs:
 
       - name: Install CUDA
         if: contains(matrix.cuda, '.')
-        uses: Jimver/cuda-toolkit@master
+        uses: Jimver/cuda-toolkit@v0.2.36
         id: cuda-toolkit
         with:
           cuda: ${{ matrix.cuda }}
           method: 'local'
+	  sub-packages: '["nvcc", "cudart"]'
+	  log-file-suffix: '${{matrix.os}}_${{matrix.cuda}}.txt'
 
       - name: Checkout ANARI-SDK
         uses: actions/checkout@v5
