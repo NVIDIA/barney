@@ -6,7 +6,12 @@
 
 // helium
 #include "helium/BaseDevice.h"
-#include "barneyDeviceConfig.h"
+
+// iw - do NOT include barneyDeviceConfig.h here - this is a
+// auto-generated header file with backend-specific configs that only
+// exists in backend specific build dirs, and that would conflict with
+// other backends if included, anyway.  #include
+// "barneyDeviceConfig.h"
 
 namespace barney {
   
