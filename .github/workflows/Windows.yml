@@ -64,10 +64,6 @@ jobs:
           repository: "KhronosGroup/ANARI-SDK"
           path: ${{github.workspace}}/anari_sdk
 
-      - name: create shared install dir
-        run: |
-          mkdir ${{github.workspace}}\install
-
       - name: CMake Configure ANARI-SDK
         run: |
           mkdir ${{github.workspace}}\anari_sdk\build
