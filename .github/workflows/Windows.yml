@@ -22,19 +22,19 @@ jobs:
             config: Release
             build_flags:
           - os: windows-2025
-            cuda: "13.2.0"
+            cuda: "13.5.0"
             visual-studio: "Visual Studio 18 2026"
             shell: "powershell"
             config: Release
             build_flags:
           - os: windows-2025
-            cuda: "13.2.0"
+            cuda: "13.5.0"
             visual-studio: "Visual Studio 18 2026"
             shell: "powershell"
             config: Debug
             build_flags:
           - os: windows-2025
-            cuda: "13.2.0"
+            cuda: "13.5.0"
             visual-studio: "Visual Studio 18 2026"
             shell: "powershell"
             config: Debug
