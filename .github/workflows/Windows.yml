@@ -17,28 +17,28 @@ jobs:
         include:
           - os: windows-2022
             cuda: "12.6.2"
-            visual-studio: "Visual Studio 17 2022"
+            generator: "Visual Studio 17 2022"
             config: Release
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Ninja"
+            generator: "Ninja"
             config: Release
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Ninja"
+            generator: "Ninja"
             config: Debug
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Ninja"
+            generator: "Ninja"
             config: Debug
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
     env:
-      cmake_generator: "${{ matrix.visual-studio }}"
-      visual_studio: "${{ matrix.visual-studio }}"
+      cmake_generator: "${{ matrix.generator }}"
+      visual_studio: "${{ matrix.generator }}"
       build_dir: "build"
     steps:
       - name: Checkout barney
@@ -68,7 +68,7 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\anari_sdk\build
           cd ${{github.workspace}}\anari_sdk\build
-          cmake -DCMAKE_BUILD_TYPE=${{matrix.config}} -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
+          cmake -DCMAKE_BUILD_TYPE=${{matrix.config}} -A x64 -G "${{ matrix.generator }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
 
       - name: build ANARI-SDK
         run: |
@@ -84,7 +84,7 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\build
           cd ${{github.workspace}}\build
-          cmake -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }}
+          cmake -A x64 -G "${{ matrix.generator }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }}
 
       - name: build barney
         run: |
