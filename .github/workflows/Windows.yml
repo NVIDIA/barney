@@ -50,13 +50,35 @@ jobs:
         with:
           submodules: true
 
-      - name: Install CUDA
+      # ------------- Windows: NVIDIA redistributable archives -------------
+      - name: Install CUDA (Windows)
         if: contains(matrix.cuda, '.')
-        uses: Jimver/cuda-toolkit@master
-        id: cuda-toolkit
-        with:
-          cuda: ${{ matrix.cuda }}
-          method: 'local'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base     = 'https://developer.download.nvidia.com/compute/cuda/redist'
+          $manifest = Invoke-RestMethod "$base/redistrib_${{ matrix.cuda }}.json"
+          $cudaHome = Join-Path $env:RUNNER_TEMP 'cuda'
+          New-Item -ItemType Directory -Force $cudaHome | Out-Null
+          foreach ($c in 'cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_cccl') {
+            $entry = $manifest.$c.'windows-x86_64'
+            if (-not $entry) { Write-Host "skipping $c (not in manifest)"; continue }
+            $zip = Join-Path $env:RUNNER_TEMP (Split-Path $entry.relative_path -Leaf)
+            Write-Host "downloading $c"
+            Invoke-WebRequest "$base/$($entry.relative_path)" -OutFile $zip
+            $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+            if ($hash -ne $entry.sha256.ToUpper()) { throw "checksum mismatch for $c" }
+            $tmp = Join-Path $env:RUNNER_TEMP "x_$c"
+            Expand-Archive $zip -DestinationPath $tmp
+            Copy-Item -Recurse -Force (Join-Path (Get-ChildItem $tmp)[0].FullName '*') $cudaHome
+          }
+          "CUDA_PATH=$cudaHome"           >> $env:GITHUB_ENV
+          "CUDACXX=$cudaHome\bin\nvcc.exe" >> $env:GITHUB_ENV
+          "$cudaHome\bin"                 >> $env:GITHUB_PATH
+
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Checkout ANARI-SDK
         uses: actions/checkout@v5
