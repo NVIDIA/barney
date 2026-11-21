@@ -18,25 +18,16 @@ jobs:
           - os: windows-2022
             cuda: "12.6.2"
             visual-studio: "Visual Studio 17 2022"
-            shell: "powershell"
             config: Release
             build_flags:
-          - os: windows-2025
-            cuda: "13.2.0"
-            visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
-            config: Release
-            build_flags:
-          - os: windows-2025
-            cuda: "13.2.0"
-            visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
+          - os: windows-2022
+            cuda: "12.6.2"
+            visual-studio: "Visual Studio 17 2022"
             config: Debug
             build_flags:
-          - os: windows-2025
-            cuda: "13.2.0"
-            visual-studio: "Visual Studio 18 2026"
-            shell: "powershell"
+          - os: windows-2022
+            cuda: "12.6.2"
+            visual-studio: "Visual Studio 17 2022"
             config: Debug
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
@@ -46,27 +37,24 @@ jobs:
       build_dir: "build"
     steps:
       - name: Checkout barney
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
 
-      - name: Install CUDA
-        if: contains(matrix.cuda, '.')
-        uses: Jimver/cuda-toolkit@master
-        id: cuda-toolkit
+      - name: Setup CUDA Toolkit
+        uses: ./.github/actions/setup-cuda
         with:
-          cuda: ${{ matrix.cuda }}
-          method: 'local'
+          cuda-version: ${{ matrix.cuda }}
+
+      - name: create shared install dir
+        run: |
+          mkdir ${{github.workspace}}\install
 
       - name: Checkout ANARI-SDK
         uses: actions/checkout@v5
         with:
           repository: "KhronosGroup/ANARI-SDK"
           path: ${{github.workspace}}/anari_sdk
-
-      - name: create shared install dir
-        run: |
-          mkdir ${{github.workspace}}\install
 
       - name: CMake Configure ANARI-SDK
         run: |
@@ -88,7 +76,7 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\build
           cd ${{github.workspace}}\build
-          cmake -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }} -DCMAKE_BUILD_TYPE=${{matrix.config}}
+          cmake -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }}
 
       - name: build barney
         run: |

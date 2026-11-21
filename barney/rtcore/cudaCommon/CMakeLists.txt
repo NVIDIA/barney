@@ -8,7 +8,7 @@
 # t have a different cmake target for each 'isntantiation' of this
 # code.
 
-if (backend STREQUAL "hip" OR backend STREQUAL "hiprt")
+if ((backend STREQUAL "hip") OR (backend STREQUAL "hiprt"))
   set(CMAKE_HIP_PLATFORM amd)
   enable_language(HIP)
   find_package(hip REQUIRED)
@@ -24,7 +24,6 @@ set(cudaCommon_sources
 rtc_configure_source(${cudaCommon_sources})
 add_library(barney_rtc_cudaCommon_${backend} STATIC
   ${cudaCommon_sources}
-#  cuda-helper.cpp
 )
 target_link_libraries(barney_rtc_cudaCommon_${backend} PUBLIC
   $<BUILD_INTERFACE:barney_config_${backend}>
@@ -34,8 +33,8 @@ if (backend STREQUAL "hip" OR backend STREQUAL "hiprt")
   target_compile_definitions(barney_rtc_cudaCommon_${backend} PUBLIC
     -DUSE_HIP=1 -D__HIP_PLATFORM_AMD__=1
   )
-  target_link_libraries(barney_rtc_cudaCommon_${backend}
-  PUBLIC hip::host
+    target_link_libraries(barney_rtc_cudaCommon_${backend}
+    PUBLIC hip::host
   )
 else()
   target_link_libraries(barney_rtc_cudaCommon_${backend} PUBLIC

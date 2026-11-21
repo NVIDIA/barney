@@ -1,0 +1,133 @@
+name: 'Setup CUDA Toolkit'
+description: 'Install CUDA toolkit using redistributable archives with checksum verification and caching'
+inputs:
+  cuda-version:
+    description: 'CUDA version to install (e.g., 12.4.1, 13.0.2)'
+    required: true
+outputs:
+  cuda-path:
+    description: 'Path to CUDA installation'
+    value: ${{ steps.set-env.outputs.cuda-path }}
+  cache-hit:
+    description: 'Whether cache was hit'
+    value: ${{ steps.cache-cuda.outputs.cache-hit }}
+runs:
+  using: 'composite'
+  steps:
+    # Parse version components
+    - name: Parse CUDA version
+      id: parse-version
+      shell: bash
+      run: |
+        CUDA_VERSION="${{ inputs.cuda-version }}"
+        CUDA_MAJOR=$(echo $CUDA_VERSION | cut -d. -f1)
+        CUDA_MINOR=$(echo $CUDA_VERSION | cut -d. -f2)
+        CUDA_PATCH=$(echo $CUDA_VERSION | cut -d. -f3)
+        echo "major=$CUDA_MAJOR" >> $GITHUB_OUTPUT
+        echo "minor=$CUDA_MINOR" >> $GITHUB_OUTPUT
+        echo "patch=$CUDA_PATCH" >> $GITHUB_OUTPUT
+        echo "major-minor=${CUDA_MAJOR}.${CUDA_MINOR}" >> $GITHUB_OUTPUT
+
+    # Cache the CUDA installation
+    # Install directly to cache directory - no sudo needed
+    - name: Cache CUDA installation (Linux)
+      if: runner.os == 'Linux'
+      uses: actions/cache@v4
+      id: cache-cuda-linux
+      with:
+        path: ~/cuda-${{ steps.parse-version.outputs.major-minor }}
+        key: cuda-Linux-${{ inputs.cuda-version }}-redist-v4
+
+    - name: Cache CUDA installation (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      id: cache-cuda-windows
+      with:
+        path: C:\cuda-${{ steps.parse-version.outputs.major-minor }}
+        key: cuda-Windows-${{ inputs.cuda-version }}-redist-v2
+
+    # Set cache-hit output for use in conditions
+    - name: Set cache status
+      id: cache-cuda
+      shell: bash
+      run: |
+        if [ "${{ runner.os }}" == "Linux" ]; then
+          echo "cache-hit=${{ steps.cache-cuda-linux.outputs.cache-hit }}" >> $GITHUB_OUTPUT
+        else
+          echo "cache-hit=${{ steps.cache-cuda-windows.outputs.cache-hit }}" >> $GITHUB_OUTPUT
+        fi
+
+    # Linux installation via redistributables (cache miss)
+    - name: Install CUDA (Linux)
+      if: runner.os == 'Linux' && steps.cache-cuda-linux.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        CUDA_VERSION="${{ inputs.cuda-version }}"
+        CUDA_MAJOR_MINOR="${{ steps.parse-version.outputs.major-minor }}"
+        INSTALL_DIR="$HOME/cuda-${CUDA_MAJOR_MINOR}"
+        ACTION_DIR="${{ github.action_path }}"
+
+        echo "Installing CUDA $CUDA_VERSION using redistributables"
+
+        # Make install script executable and run it
+        chmod +x "$ACTION_DIR/scripts/install-cuda.sh"
+        "$ACTION_DIR/scripts/install-cuda.sh" \
+          -v "$CUDA_VERSION" \
+          -p "$INSTALL_DIR" \
+          -c "$ACTION_DIR/components.json"
+
+    # Windows installation via redistributables (cache miss)
+    - name: Install CUDA (Windows)
+      if: runner.os == 'Windows' && steps.cache-cuda-windows.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: |
+        $cudaVersion = "${{ inputs.cuda-version }}"
+        $cudaMajorMinor = "${{ steps.parse-version.outputs.major-minor }}"
+        $installPath = "C:\cuda-$cudaMajorMinor"
+        $actionDir = "${{ github.action_path }}"
+
+        Write-Host "Installing CUDA $cudaVersion using redistributables"
+
+        & "$actionDir\scripts\install-cuda.ps1" `
+          -CudaVersion $cudaVersion `
+          -InstallPath $installPath `
+          -ComponentsFile "$actionDir\components.json"
+
+    # Set environment variables
+    - name: Set CUDA environment
+      id: set-env
+      shell: bash
+      run: |
+        CUDA_MAJOR_MINOR="${{ steps.parse-version.outputs.major-minor }}"
+
+        if [ "${{ runner.os }}" == "Linux" ]; then
+          CUDA_PATH="$HOME/cuda-${CUDA_MAJOR_MINOR}"
+          echo "CUDA_PATH=${CUDA_PATH}" >> $GITHUB_ENV
+          echo "${CUDA_PATH}/bin" >> $GITHUB_PATH
+          echo "LD_LIBRARY_PATH=${CUDA_PATH}/lib64:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
+        else
+          CUDA_PATH="C:\\cuda-${CUDA_MAJOR_MINOR}"
+          echo "CUDA_PATH=${CUDA_PATH}" >> $GITHUB_ENV
+          echo "${CUDA_PATH}\\bin" >> $GITHUB_PATH
+          # Required for CMake to find CUDA on Windows with Visual Studio
+          echo "CUDA_TOOLKIT_ROOT_DIR=${CUDA_PATH}" >> $GITHUB_ENV
+          echo "CudaToolkitDir=${CUDA_PATH}" >> $GITHUB_ENV
+          # CUDACXX tells CMake which CUDA compiler to use, bypassing VS toolset detection
+          echo "CUDACXX=${CUDA_PATH}\\bin\\nvcc.exe" >> $GITHUB_ENV
+        fi
+
+        echo "cuda-path=${CUDA_PATH}" >> $GITHUB_OUTPUT
+        echo "CUDA environment configured: ${CUDA_PATH}"
+
+    # Verify installation
+    - name: Verify CUDA installation
+      shell: bash
+      run: |
+        echo "Verifying CUDA installation..."
+        if command -v nvcc &> /dev/null; then
+          nvcc --version
+        else
+          echo "Warning: nvcc not found in PATH, but installation may still be valid"
+          echo "CUDA_PATH: $CUDA_PATH"
+          ls -la "$CUDA_PATH/bin" 2>/dev/null || dir "$CUDA_PATH\\bin" 2>/dev/null || true
+        fi
