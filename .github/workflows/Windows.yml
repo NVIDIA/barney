@@ -22,17 +22,17 @@ jobs:
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Visual Studio 18 2026"
+            visual-studio: "Ninja"
             config: Release
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Visual Studio 18 2026"
+            visual-studio: "Ninja"
             config: Debug
             build_flags:
           - os: windows-2025
             cuda: "13.5.0"
-            visual-studio: "Visual Studio 18 2026"
+            visual-studio: "Ninja"
             config: Debug
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
