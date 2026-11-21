@@ -29,21 +29,6 @@ jobs:
             visual-studio: "Visual Studio 17 2022"
             config: Debug
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
-#          - os: windows-2025
-#            cuda: "13.5.0"
-#            visual-studio: "Visual Studio 18 2026"
-#            config: Release
-#            build_flags:
-#          - os: windows-2025
-#            cuda: "13.5.0"
-#            visual-studio: "Visual Studio 18 2026"
-#            config: Debug
-#            build_flags:
-#          - os: windows-2025
-#            cuda: "13.5.0"
-#            visual-studio: "Visual Studio 18 2026"
-#            config: Debug
-#            build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
     env:
       cmake_generator: "${{ matrix.visual-studio }}"
