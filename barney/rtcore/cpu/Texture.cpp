@@ -606,17 +606,17 @@ namespace BARNEY_NS {
       sampler = createSampler(data,desc);
     }
 
-    __both__ float tex2D1f(rtc::TextureObject to,
+    float tex2D1f(rtc::TextureObject to,
                            float x, float y)
     { return ((TextureSampler *)to)->tex2D({x,y}).x; }
     
-    __both__ float tex3D1f(rtc::TextureObject to,
+    float tex3D1f(rtc::TextureObject to,
                            float x, float y, float z)
     {
       return ((TextureSampler *)to)->tex3D({x,y,z}).x;
     }
     
-    __both__ vec4f tex2D4f(rtc::TextureObject to,
+    vec4f tex2D4f(rtc::TextureObject to,
                             float x, float y)
     {
       // PING;
@@ -625,7 +625,7 @@ namespace BARNEY_NS {
       return v;
     }
 
-    __both__ vec4f tex3D4f(rtc::TextureObject to,
+    vec4f tex3D4f(rtc::TextureObject to,
                            float x, float y, float z)
     { return ((TextureSampler *)to)->tex3D({x,y,z}); }
     
