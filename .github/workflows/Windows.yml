@@ -25,6 +25,7 @@ jobs:
             visual-studio: "Visual Studio 17 2022"
             config: Debug
             build_flags:
+          - os: windows-2022
             cuda: "12.6.2"
             visual-studio: "Visual Studio 17 2022"
             config: Debug
