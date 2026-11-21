@@ -58,13 +58,31 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\install
 
-      - name: Build ANARI-SDK
-        uses: ./.github/actions/build-anari-sdk
+      - name: Checkout ANARI-SDK
+        uses: actions/checkout@v5
         with:
-          config: ${{ matrix.config }}
-          install-prefix: ${{ github.workspace }}\install
-          build-deps-path: .
-          generator: ${{ matrix.generator }}
+          repository: "KhronosGroup/ANARI-SDK"
+          path: ${{github.workspace}}/anari_sdk
+
+      - name: create shared install dir
+        run: |
+          mkdir ${{github.workspace}}\install
+
+      - name: CMake Configure ANARI-SDK
+        run: |
+          mkdir ${{github.workspace}}\anari_sdk\build
+          cd ${{github.workspace}}\anari_sdk\build
+          cmake -DCMAKE_BUILD_TYPE=${{matrix.config}} -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
+
+      - name: build ANARI-SDK
+        run: |
+          cd ${{github.workspace}}\anari_sdk\build
+          cmake --build . --config ${{ matrix.config }}
+
+      - name: install ANARI-SDK
+        run: |
+          cd ${{github.workspace}}\anari_sdk\build
+          cmake --install . --config ${{ matrix.config }}
 
       - name: CMake Configure barney
         run: |
