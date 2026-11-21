@@ -37,10 +37,12 @@ namespace BARNEY_NS {
       bool m_upscale{false};
       anari::math::float4 m_background{0.f, 0.f, 0.f, 1.f};
       anari::math::float4 m_cutPlane{0.f, 0.f, 0.f, -1e30f};
-#if BARNEY_USE_MULTI_SCATTERING
+
+      /*! @{ for multi-scattering: as of the time fo this writing
+          these are not in the spec yet */
       int m_maxVolumeBounces{8};
       bool m_volumeMultiScatter{false};
-#endif
+      /*! @} */
       int m_sampleLimit{1024};
       helium::ChangeObserverPtr<Array2D> m_backgroundImage;
     };

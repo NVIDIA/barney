@@ -25,16 +25,14 @@ namespace BARNEY_NS {
 
     void Renderer::commit()
     {
-      bgColor         = staged.bgColor;
-      ambientRadiance = staged.ambientRadiance;
-      pathsPerPixel   = staged.pathsPerPixel;
-      bgTexture       = staged.bgTexture;
-      cutPlane        = staged.cutPlane;
-#if BARNEY_USE_MULTI_SCATTERING
-      maxVolumeBounces = staged.maxVolumeBounces;
+      bgColor            = staged.bgColor;
+      ambientRadiance    = staged.ambientRadiance;
+      pathsPerPixel      = staged.pathsPerPixel;
+      bgTexture          = staged.bgTexture;
+      cutPlane           = staged.cutPlane;
+      maxVolumeBounces   = staged.maxVolumeBounces;
       volumeMultiScatter = staged.volumeMultiScatter;
-#endif
-      sampleLimit     = staged.sampleLimit;
+      sampleLimit        = staged.sampleLimit;
     }
   
     bool Renderer::setObject(const std::string &member,
@@ -76,7 +74,6 @@ namespace BARNEY_NS {
         staged.sampleLimit = value;
         return true;
       }
-#if BARNEY_USE_MULTI_SCATTERING
       if (member == "maxVolumeBounces") {
         staged.maxVolumeBounces = value;
         return true;
@@ -85,7 +82,6 @@ namespace BARNEY_NS {
         staged.volumeMultiScatter = value;
         return true;
       }
-#endif
       return false;
     }
   
@@ -114,10 +110,8 @@ namespace BARNEY_NS {
       dd.ambientRadiance = ambientRadiance;
       dd.pathsPerPixel = pathsPerPixel;
       dd.cutPlane = cutPlane;
-#if BARNEY_USE_MULTI_SCATTERING
       dd.maxVolumeBounces = maxVolumeBounces;
       dd.volumeMultiScatter = volumeMultiScatter;
-#endif
       return dd;
     }
 

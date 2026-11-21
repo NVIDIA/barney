@@ -113,7 +113,7 @@ namespace BARNEY_NS {
         (eg, if the system actually has optix support in the driver),
         and bail out with an exception if it cannot. */
     BARNEY_LIBRARY_INTERFACE
-    ::anari::LibraryImpl *createAnariLibrary(void *lib,
+    ::anari::LibraryImpl *createAnariLibrary(void *ignoreShouldBeNull,
                                              ANARIStatusCallback statusCallback,
                                              const void *scbPtr)
     {
@@ -121,7 +121,7 @@ namespace BARNEY_NS {
         return nullptr;
       try {
         ::anari::LibraryImpl *lib
-          = new BarneyLibrary(lib, statusCallback, scbPtr);
+          = new BarneyLibrary(ignoreShouldBeNull, statusCallback, scbPtr);
         return lib;
       } catch (std::exception e) {
         std::cout << "could not create " << TOSTRING(BARNEY_NS)
@@ -144,10 +144,4 @@ namespace BARNEY_NS {
     
   }
 } // namespace BANARI_NS
-
-// have to have this in a auto-generated file because we have to get
-// cmake to insert BARNEY_DEVIEC_NAME - can't do that through #defines
-// because the entrypoint macro is itself a macro so it wont'
-// substitute recursively
-// #include "Library_entryPoint.h"
 

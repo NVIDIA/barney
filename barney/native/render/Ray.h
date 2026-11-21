@@ -19,6 +19,10 @@ namespace BARNEY_NS {
       vec3f    throughput;
       int32_t  pixelID;
       float    misWeight;
+      struct {
+        vec3f color;
+        float alpha;
+      } miss;
       int      numDiffuseBounces;
       int      numVolumeBounces;
     };
@@ -72,9 +76,9 @@ namespace BARNEY_NS {
                                     const PackedBSDF &packedBSDF,
                                     vec3f geometricNormal = vec3f(0.f));
       
-      inline __rtc_device bool hadHit() const { return bsdfType != PackedBSDF::NONE; }
+      inline __rtc_device bool hadHit() const { return bsdfType != PackedBSDF::INVALID; }
       inline __rtc_device void clearHit(float newTMax = BARNEY_INF)
-      { bsdfType = PackedBSDF::NONE; tMax = newTMax; }
+      { bsdfType = PackedBSDF::INVALID; tMax = newTMax; }
       
       inline __rtc_device void packNormal(vec3f N);
       inline __rtc_device vec3f unpackNormal() const;
@@ -84,6 +88,9 @@ namespace BARNEY_NS {
         const vec3f n = (vec3f)geometricNormal;
         return dot(n,n) > 0.f ? normalize(n) : n;
       }
+
+      inline __rtc_device void markAsInvalid() { tMax = -1.f; }
+      inline __rtc_device bool valid() const { return tMax > 0.f; };
 #endif
 
       vec3f   org;
@@ -105,10 +112,7 @@ namespace BARNEY_NS {
         return _dbg;
       }
       
-      union {
-        PackedBSDF::Data hitBSDF;
-        bn_float4 missColor;
-      };
+      PackedBSDF::Data hitBSDF;
     };
   
 #if RTC_DEVICE_CODE
@@ -183,7 +187,7 @@ namespace BARNEY_NS {
                        PathState &state,
                        vec3f _tp, vec3f _org, vec3f _dir, float len)
     {
-      ray.bsdfType = PackedBSDF::NONE;
+      ray.bsdfType = PackedBSDF::INVALID;
       ray.isShadowRay = 1;
       // iw: issue #66: initialize the dbg and crosshair flags; they
       // can still be overwritten but shouldn't be left uninitialized.

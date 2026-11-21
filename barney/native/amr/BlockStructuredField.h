@@ -19,8 +19,6 @@ namespace BARNEY_NS {
       typedef std::shared_ptr<BlockStructuredField> SP;
 
       struct PLD {
-        // rtc::ComputeKernel1D *mcRasterBlocks = 0;
-        // rtc::ComputeKernel1D *computeElementBBs = 0;
         Block *blocks;
         float *scalars;
       };

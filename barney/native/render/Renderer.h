@@ -23,10 +23,8 @@ namespace BARNEY_NS {
         float              ambientRadiance;
         int                pathsPerPixel;
         vec4f              cutPlane;
-#if BARNEY_USE_MULTI_SCATTERING
         int                maxVolumeBounces;
         int                volumeMultiScatter;
-#endif
       };
     
       Renderer(Context *context);
@@ -57,10 +55,8 @@ namespace BARNEY_NS {
         int         pathsPerPixel;
         float       ambientRadiance;
         int         crosshairs;
-#if BARNEY_USE_MULTI_SCATTERING
-        int         maxVolumeBounces = 8;
-        int         volumeMultiScatter = 0;
-#endif
+        int         maxVolumeBounces;
+        int         volumeMultiScatter;
         int         sampleLimit;
       } staged;
       vec4f       bgColor         = vec4f(0,0,0,1.f);
@@ -69,10 +65,8 @@ namespace BARNEY_NS {
       float       ambientRadiance = 1.f;
       int         crosshairs      = 0;
       vec4f       cutPlane        = vec4f(0,0,0,-1e30f);
-#if BARNEY_USE_MULTI_SCATTERING
       int         maxVolumeBounces = 8;
       int         volumeMultiScatter = 0;
-#endif
       // maximum number of samples accumulated:
       int         sampleLimit = 1024;
     };

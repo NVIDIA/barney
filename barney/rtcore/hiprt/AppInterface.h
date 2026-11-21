@@ -8,7 +8,6 @@
 
 #include "rtcore/hiprt/Device.h"
 #include "rtcore/hiprt/Buffer.h"
-#include "rtcore/cudaCommon/ComputeKernel.h"
 #include "rtcore/hiprt/TraceKernel.h"
 #include "rtcore/hiprt/Geom.h"
 #include "rtcore/hiprt/Group.h"

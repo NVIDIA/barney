@@ -31,10 +31,6 @@ namespace BARNEY_NS {
     struct TextureData;
     struct Texture;
 
-    struct ComputeKernel1D;
-    struct ComputeKernel2D;
-    struct ComputeKernel3D;
-
     struct TraceInterface;
     
     typedef void (*TraceKernelFct)(BARNEY_NS::rtc::TraceInterface &);

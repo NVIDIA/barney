@@ -36,7 +36,7 @@ namespace BARNEY_NS {
     {
 #if RTC_DEVICE_CODE
       vec3i mcDims = mcGrid.dims;
-      int tid = ci.launchIndex().x;
+      int tid = ci.getLaunchIndex().x;
       if (tid >= mcDims.x*mcDims.y*mcDims.z) return;
       vec3i mcID(tid % mcDims.x,
                  (tid / mcDims.x) % mcDims.y,
