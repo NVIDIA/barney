@@ -41,8 +41,6 @@ jobs:
             build_flags: -DBARNEY_BACKEND_CPU=ON -DBARNEY_BACKEND_CUDA=OFF -DBARNEY_BACKEND_OPTIX=OFF
 
     env:
-      cmake_generator: "${{ matrix.visual-studio }}"
-      visual_studio: "${{ matrix.visual-studio }}"
       build_dir: "build"
     steps:
       - name: Checkout barney
@@ -60,7 +58,7 @@ jobs:
           $manifest = Invoke-RestMethod "$base/redistrib_${{ matrix.cuda }}.json"
           $cudaHome = Join-Path $env:RUNNER_TEMP 'cuda'
           New-Item -ItemType Directory -Force $cudaHome | Out-Null
-          foreach ($c in 'cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_cccl') {
+          foreach ($c in 'cuda_nvcc','cuda_crt','libnvvm','cuda_cudart','cuda_cccl','cccl') {
             $entry = $manifest.$c.'windows-x86_64'
             if (-not $entry) { Write-Host "skipping $c (not in manifest)"; continue }
             $zip = Join-Path $env:RUNNER_TEMP (Split-Path $entry.relative_path -Leaf)
@@ -94,7 +92,7 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\anari_sdk\build
           cd ${{github.workspace}}\anari_sdk\build
-          cmake -DCMAKE_BUILD_TYPE=${{matrix.config}} -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.config}} .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install -DBUILD_HELIDE_DEVICE=OFF -DBUILD_TESTING=OFF -DBUILD_EXAMPLES=OFF
 
       - name: build ANARI-SDK
         run: |
@@ -110,7 +108,7 @@ jobs:
         run: |
           mkdir ${{github.workspace}}\build
           cd ${{github.workspace}}\build
-          cmake -A x64 -G "${{ matrix.visual-studio }}" .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }} -DCMAKE_BUILD_TYPE=${{matrix.config}}
+          cmake -G Ninja .. -DCMAKE_INSTALL_PREFIX=${{github.workspace}}\install ${{ matrix.build_flags }} -DCMAKE_BUILD_TYPE=${{matrix.config}}
 
       - name: build barney
         run: |
