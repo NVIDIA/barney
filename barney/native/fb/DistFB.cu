@@ -632,6 +632,8 @@ namespace BARNEY_NS {
 
       if (context->isActiveWorker)
         for (auto device : *devices)  {
+          SetActiveGPU forDuration(device);
+          device->sync();
           context->world.send(owningRank,
                               device->contextRank(),
                               getFor(device)->tileDescs,
