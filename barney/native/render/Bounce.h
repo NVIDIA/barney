@@ -10,7 +10,10 @@
 
 namespace BARNEY_NS {
 namespace native {
+constexpr int MAX_PATH_DEPTH = 10;
+
 #if RTC_DEVICE_CODE
+
 inline __rtc_device float safe_eps(float f, vec3f v)
 {
   return max(f, 1e-6f * reduce_max(abs(v)));
@@ -152,6 +155,19 @@ inline __rtc_device void bounce(const World::DD &world,
   interaction.insideMedium = ray.isInMedium;
   const float epsilon = safe_eps(1e-4f, interaction.P);
   Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));
+  bool canContinue = generation < MAX_PATH_DEPTH;
+  // Degenerate surfaces also lack a normal, so only the BSDF type identifies
+  // a volume collision.
+  const bool isPhaseFunction = bsdf.type == PackedBSDF::TYPE_HGPhase
+      || bsdf.type == PackedBSDF::TYPE_SimplePhase;
+  if (isPhaseFunction) {
+#if BARNEY_USE_MULTI_SCATTERING
+    canContinue = canContinue && renderer.volumeMultiScatter
+        && state.numVolumeBounces < renderer.maxVolumeBounces;
+#else
+    canContinue = false;
+#endif
+  }
   Light::Sample light;
   if (sampleLights(light, world, renderer, interaction.P, random)) {
     const EvalRes e = bsdf.evalProjected(interaction, light.direction);
@@ -163,7 +179,7 @@ inline __rtc_device void bounce(const World::DD &world,
       makeShadowRay(shadowRay,
           shadowState,
           directLightContribution(incoming, e, light.radiance,
-                                  probability, light.environment),
+                                  probability, light.environment && canContinue),
           interaction.P + epsilon * offset,
           light.direction,
           light.distance * (1.f - 2.f * epsilon));
@@ -175,7 +191,7 @@ inline __rtc_device void bounce(const World::DD &world,
     }
   }
   ray.markAsInvalid();
-  if (generation >= 10)
+  if (!canContinue)
     return;
   ScatterResult s;
   bsdf.scatter(s, interaction, random);
@@ -187,16 +203,8 @@ inline __rtc_device void bounce(const World::DD &world,
           ? dot(orientedGeometricNormal, s.dir) >= 0.f
           : dot(orientedGeometricNormal, s.dir) <= 0.f))
     return;
-  if (s.event == ScatterResult::VOLUME_EVENT) {
-#if BARNEY_USE_MULTI_SCATTERING
-    if (!renderer.volumeMultiScatter
-        || state.numVolumeBounces >= renderer.maxVolumeBounces)
-      return;
+  if (s.event == ScatterResult::VOLUME_EVENT)
     state.numVolumeBounces = state.numVolumeBounces + 1;
-#else
-    return;
-#endif
-  }
   if (s.type == ScatterResult::DIFFUSE) {
     if (state.numDiffuseBounces >= 1)
       return;

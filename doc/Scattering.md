@@ -118,6 +118,11 @@ Discrete events do not compete with continuous direction sampling. Quad lights
 have no intersectable geometry in this implementation, so there is no competing
 BSDF-hit estimator for them either. Both cases receive MIS weight one.
 
+Environment MIS also requires an eligible continuation estimator. When volume
+continuation is disabled or its bounce budget is exhausted, or the global path
+depth limit is reached, direct environment lighting receives MIS weight one.
+There is no compensating ambient-radiance scale change.
+
 Environment CDF construction handles zero-energy rows and maps without dividing
 by zero. Directional density uses the queried direction's latitude, matching the
 sampling Jacobian rather than a texel-center approximation.

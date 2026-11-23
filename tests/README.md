@@ -1,3 +1,31 @@
+# Volume lighting regression
+
+Enable `BARNEY_BUILD_VOLUME_LIGHTING_TESTS` in any backend build:
+
+```sh
+cmake -S . -B _out/volume-lighting -DBARNEY_BUILD_VOLUME_LIGHTING_TESTS=ON
+cmake --build _out/volume-lighting --parallel
+ctest --test-dir _out/volume-lighting -R '^volume_lighting_' --output-on-failure
+```
+
+The option is off by default and does not change backend selection. Each enabled
+backend gets a `volume_lighting_<backend>` executable and CTest entry. The test
+uses device 0; OptiX is qualified, other backends are unverified.
+
+Synthetic volume hits call production `bounce()` through rtc compute launches.
+The test checks direct and unoccluded continuation contributions against literal
+isotropic energies and independent double-precision per-direction references.
+It covers disabled scattering, zero/exhausted budgets, the last allowed volume
+and global bounces, the global depth limit (including a Lambertian surface),
+SimplePhase and HG with positive/negative anisotropy, colored HDR throughput,
+emission, and ambient/directional/area/mixed/no-light cases. It also checks
+continuation validity, bounce counts, and that shadow MIS is applied only once.
+
+There is no ray traversal or scene geometry: visibility is explicitly synthesized
+as an unoccluded miss. This regression does not test environment textures/CDFs,
+volume tracing, mixed-surface-lobe bounce limits, or final image appearance. The
+older optional packed-BSDF suite is independent and is not required by this test.
+
 # Hit-time tangent tests
 
 Enable `BARNEY_BUILD_TANGENT_TESTS` in a CPU or GPU backend build:
