@@ -141,7 +141,7 @@ namespace BARNEY_NS {
       bool emissionXfActive = false;
       PrincipledVolumeParams principled;
       float anisotropy = 0.0f;
-      float scatteringAlbedo = 0.9f;
+      float scatteringAlbedo = 1.0f;
       bool needsMajorantRebuild = false;
       DevGroup::SP const devices;
       int userID = 0;
