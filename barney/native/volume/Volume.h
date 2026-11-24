@@ -140,7 +140,7 @@ namespace BARNEY_NS {
       TransferFunction emissionXf;
       bool emissionXfActive = false;
       PrincipledVolumeParams principled;
-      float anisotropy = 0.6f;
+      float anisotropy = 0.0f;
       float scatteringAlbedo = 0.9f;
       bool needsMajorantRebuild = false;
       DevGroup::SP const devices;

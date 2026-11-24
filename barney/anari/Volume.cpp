@@ -80,7 +80,7 @@ namespace BARNEY_NS {
       m_field = getParamObject<SpatialField>("value");
       m_valueRange = getParam<box1>("valueRange", box1{0.f, 1.f});
       m_unitDistance = getParam<float>("unitDistance", 1.f);
-      m_anisotropy = getParam<float>("anisotropy", 0.6f);
+      m_anisotropy = getParam<float>("anisotropy", 0.0f);
       m_scatteringAlbedo = getParam<float>("scatteringAlbedo", 0.9f);
       invalidateBarneyVolumeIfFieldChanged();
     }

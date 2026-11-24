@@ -12881,7 +12881,7 @@ static const void * ANARI_VOLUME_principledVolume_anisotropy_info(ANARIDataType 
          }
       case 1: // default
          if(paramType == ANARI_FLOAT32 && infoType == ANARI_FLOAT32) {
-            static const float default_value[1] = {0.600000f};
+            static const float default_value[1] = {0.000000f};
             return default_value;
          } else {
             return nullptr;

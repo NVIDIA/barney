@@ -64,7 +64,7 @@ namespace BARNEY_NS {
       box1 m_valueRange{0.f, 1.f};
       float m_unitDistance{1.f};
       float m_densityScale{1.f};
-      float m_anisotropy{0.6f};
+      float m_anisotropy{0.0f};
       float m_scatteringAlbedo{0.9f};
       std::vector<math::float4> m_rgbaMap;
     };
