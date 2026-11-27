@@ -45,7 +45,8 @@
       "khr_spatial_field_nanovdb",
       "bn_frame_channel_motion",
       "bn_spatial_field_block_structured",
-      "bn_volume_principled"
+      "bn_volume_principled",
+      "bn_volume_transfer_function1d"
     ]
   },
   "objects": [

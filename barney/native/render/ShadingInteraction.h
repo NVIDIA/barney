@@ -55,6 +55,9 @@ namespace BARNEY_NS {
       // evalProjected() for surfaces only. Neither includes division by pdf.
       vec3f value;
       float pdf; // Marginal continuous density in solid angle; excludes deltas.
+      // Share of pdf proposed by diffuse lobes, which the diffuse bounce
+      // budget can make ineligible as a continuation estimator.
+      float diffusePdf = 0.f;
     };
 
     /*! result of scattering a ray on a differential surface,
@@ -82,6 +85,7 @@ namespace BARNEY_NS {
       vec3f weight = vec3f(0.f);
       vec3f dir = vec3f(0.f);
       float pdf = 0.f; // Solid-angle density; zero for delta events.
+      float diffusePdf = 0.f; // Share of pdf proposed by diffuse lobes.
       float eta = 1.f; // Incident / transmitted refractive index.
       bool delta = false;
       Event event = NO_EVENT;

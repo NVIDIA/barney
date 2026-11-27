@@ -1,0 +1,18 @@
+{
+  "info": {
+    "name": "BN_VOLUME_TRANSFER_FUNCTION1D",
+    "type": "extension",
+    "dependencies": []
+  },
+
+  "objects": [
+    {
+      "type": "ANARI_VOLUME",
+      "name": "transferFunction1D",
+      "parameters": [
+        { "name": "anisotropy", "types": ["ANARI_FLOAT32"], "tags": [], "default": 0.0, "minimum": -1.0, "maximum": 1.0, "description": "Henyey-Greenstein phase function anisotropy" },
+        { "name": "scatteringAlbedo", "types": ["ANARI_FLOAT32"], "tags": [], "default": 1.0, "minimum": 0.0, "maximum": 1.0, "description": "fraction of the sampled color that is scattered rather than absorbed" }
+      ]
+    }
+  ]
+}

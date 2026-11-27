@@ -338,7 +338,7 @@ __rtc_global void directLighting(const rtc::ComputeInterface &ci, Parameters p,
   PathState state{};
   makeShadowRay(ray,state,
                 directLightContribution(vec3f(1.f),e,vec3f(radiance),
-                                        probability,environment),
+                                        probability,environment ? e.pdf : 0.f),
                 vec3f(0.f),vec3f(0,0,1),BARNEY_INF);
   out->bsdf = e;
   out->queued = state.throughput;

@@ -118,6 +118,20 @@ Discrete events do not compete with continuous direction sampling. Quad lights
 have no intersectable geometry in this implementation, so there is no competing
 BSDF-hit estimator for them either. Both cases receive MIS weight one.
 
+Environment MIS also requires an eligible continuation estimator. When volume
+continuation is disabled or its bounce budget is exhausted, or the global path
+depth limit is reached, direct environment lighting receives MIS weight one.
+Once the diffuse bounce budget is spent, diffuse proposals are discarded and
+are no longer an eligible estimator. `EvalRes::diffusePdf` and
+`ScatterResult::diffusePdf` report the share of the marginal density proposed
+by diffuse lobes; both the direct-light and the continuation MIS weights then
+use the remaining density `pdf - diffusePdf`. A purely diffuse surface has no
+remaining density, so its direct environment lighting receives weight one; a
+mixed BSDF keeps competing through its non-diffuse lobes only. Sample
+throughput is unchanged, so only environment lighting is compensated: indirect
+light reached through a discarded diffuse proposal is still lost to the budget.
+There is no compensating ambient-radiance scale change.
+
 Environment CDF construction handles zero-energy rows and maps without dividing
 by zero. Directional density uses the queried direction's latitude, matching the
 sampling Jacobian rather than a texel-center approximation.

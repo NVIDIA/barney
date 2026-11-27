@@ -46,7 +46,8 @@
       "nv_frame_buffers_cuda",
       "bn_frame_channel_motion",
       "bn_spatial_field_block_structured",
-      "bn_volume_principled"
+      "bn_volume_principled",
+      "bn_volume_transfer_function1d"
     ]
   },
   "objects": [

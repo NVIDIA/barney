@@ -498,7 +498,8 @@ namespace BARNEY_NS {
             const float pDiff = baseSel > 0.f ? diffSelW / baseSel : 0.f;
 
             if (reflection) {
-              result.pdf = pDiff * NdotL * ONE_OVER_PI
+              result.diffusePdf = pDiff * NdotL * ONE_OVER_PI;
+              result.pdf = result.diffusePdf
                 + pSpec * reflectGivenSpec * D * G1 / (4.f * nv);
               const vec3f Fdiff = evalFresnelWithIridescence(state, F0, F90, nv);
               const vec3f diffuseColor =
@@ -536,6 +537,7 @@ namespace BARNEY_NS {
             + (1.f - CLEARCOAT_F0) * pow5(1.f - NcDotV);
           const float ccProb = saturate(state->clearcoat * FcV);
           result.pdf *= 1.f - ccProb;
+          result.diffusePdf *= 1.f - ccProb;
           if (!reflection) {
             const float FcL = CLEARCOAT_F0
               + (1.f - CLEARCOAT_F0) * pow5(1.f - fabsf(NcDotL));
@@ -753,6 +755,7 @@ namespace BARNEY_NS {
             if (!(e.pdf > 0.f) || !isfinite(e.pdf)) return;
             scatter.dir = L;
             scatter.pdf = e.pdf;
+            scatter.diffusePdf = e.diffusePdf;
             scatter.weight = e.value/e.pdf;
             scatter.type = type;
             scatter.event = transmission

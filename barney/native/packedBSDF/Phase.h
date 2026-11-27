@@ -13,8 +13,7 @@ namespace BARNEY_NS {
       /*! homogeneous phase function with Henyey-Greenstein anisotropy. */
       struct HGPhase {
         inline HGPhase() = default;
-        inline __rtc_device HGPhase(vec3f color, float scatteringAlbedo=.9f,
-                                  float g=0.f);
+        inline __rtc_device HGPhase(vec3f color, float scatteringAlbedo, float g);
 
         inline __rtc_device
         float pdf(ShadingInteraction interaction, vec3f wi, bool dbg) const;

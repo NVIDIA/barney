@@ -1,3 +1,35 @@
+# Volume lighting regression
+
+Enable `BARNEY_BUILD_VOLUME_LIGHTING_TESTS` in any backend build:
+
+```sh
+cmake -S . -B _out/volume-lighting -DBARNEY_BUILD_VOLUME_LIGHTING_TESTS=ON
+cmake --build _out/volume-lighting --parallel
+ctest --test-dir _out/volume-lighting -R '^volume_lighting_' --output-on-failure
+```
+
+The option is off by default and does not change backend selection. Each enabled
+backend gets a `volume_lighting_<backend>` executable and CTest entry. The test
+uses device 0; OptiX is qualified, other backends are unverified.
+
+Synthetic volume hits call production `bounce()` through rtc compute launches.
+The test checks direct and unoccluded continuation contributions against literal
+isotropic energies and independent double-precision per-direction references.
+It covers disabled scattering, zero/exhausted budgets, the last allowed volume
+and global bounces, the global depth limit (including a Lambertian surface),
+a Lambertian surface with a spent diffuse budget,
+SimplePhase and HG with positive/negative anisotropy, colored HDR throughput,
+emission, and ambient/directional/area/mixed/no-light cases. It also checks
+continuation validity, bounce counts, and that shadow MIS is applied only once.
+A rough dielectric surface checks that spending the diffuse bounce budget keeps
+the mean environment energy within Monte Carlo tolerance.
+
+There is no ray traversal or scene geometry: visibility is explicitly synthesized
+as an unoccluded miss. This regression does not test environment textures/CDFs,
+volume tracing, indirect light lost to the diffuse bounce budget, or final image
+appearance. The older optional packed-BSDF suite is independent and is not
+required by this test.
+
 # Hit-time tangent tests
 
 Enable `BARNEY_BUILD_TANGENT_TESTS` in a CPU or GPU backend build:
@@ -30,7 +62,7 @@ These tests inspect the packed BSDF normals from actual hits, not persistent
 mesh-generated tangent arrays: mesh commit no longer creates those arrays.
 The `1e-3` normal tolerance accommodates half-precision BSDF storage. No images,
 lighting, path integration, performance or smooth tangent continuity across
-neighbouring faces are validated. GPU tests use allocation-local device 0;
+neighbouring faces are validated. GPU tests use device 0;
 HIP/HIPRT and MPI have not been verified.
 
 # Numerical packed-BSDF tests
@@ -44,23 +76,13 @@ normal-map construction, complete path integration, or final image appearance.
 
 ## Run
 
-Enable the optional suite in an existing backend build, then build and use
-CTest (from the source workspace):
+Enable `BARNEY_BUILD_BSDF_TESTS` in any backend build; the option does not
+change backend selection:
 
 ```sh
-# OptiX, existing multi-config build
-cmake -S . -B _out/_cmake -DBARNEY_BUILD_BSDF_TESTS=ON
-just build
-cmake --build _out/_cmake --config RelWithDebInfo --target bsdf_quality_optix
-ctest --test-dir _out/_cmake -C RelWithDebInfo -R '^bsdf_quality_' --output-on-failure
-
-# Existing CPU and native-CUDA builds; do not change their backend selection
-cmake -S . -B _out/cpu-tangents -DBARNEY_BUILD_BSDF_TESTS=ON
-cmake --build _out/cpu-tangents --target bsdf_quality_cpu
-ctest --test-dir _out/cpu-tangents -R '^bsdf_quality_' --output-on-failure
-cmake -S . -B _out/cuda-tangents -DBARNEY_BUILD_BSDF_TESTS=ON
-cmake --build _out/cuda-tangents --target bsdf_quality_cuda
-ctest --test-dir _out/cuda-tangents -R '^bsdf_quality_' --output-on-failure
+cmake -S . -B _out/bsdf -DBARNEY_BUILD_BSDF_TESTS=ON
+cmake --build _out/bsdf --parallel
+ctest --test-dir _out/bsdf -R '^bsdf_quality_' --output-on-failure
 ```
 
 For a differently named build directory, substitute its path. Each enabled
