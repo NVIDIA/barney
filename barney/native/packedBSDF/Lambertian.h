@@ -26,8 +26,11 @@ struct Lambertian
   inline __rtc_device EvalRes eval(ShadingInteraction interaction, vec3f wi, bool dbg) const
   {
     const float p = pdf(interaction, wi, dbg);
-    return p > 0.f ? EvalRes(rtc::load(albedo) * ONE_OVER_PI, p)
-                   : EvalRes::zero();
+    if (!(p > 0.f))
+      return EvalRes::zero();
+    EvalRes res(rtc::load(albedo) * ONE_OVER_PI, p);
+    res.diffusePdf = p;
+    return res;
   }
 
   inline __rtc_device EvalRes evalProjected(ShadingInteraction interaction, vec3f wi, bool dbg) const
@@ -49,6 +52,7 @@ struct Lambertian
     s.pdf = pdf(interaction, s.dir, dbg);
     if (!(s.pdf > 0.f))
       return;
+    s.diffusePdf = s.pdf;
     s.weight = rtc::load(albedo);
     s.type = ScatterResult::DIFFUSE;
     s.event = ScatterResult::REFLECTION;

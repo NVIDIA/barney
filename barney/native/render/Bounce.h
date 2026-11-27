@@ -11,12 +11,21 @@
 namespace BARNEY_NS {
 namespace native {
 constexpr int MAX_PATH_DEPTH = 10;
+constexpr int MAX_DIFFUSE_BOUNCES = 1;
 
 #if RTC_DEVICE_CODE
 
 inline __rtc_device float safe_eps(float f, vec3f v)
 {
   return max(f, 1e-6f * reduce_max(abs(v)));
+}
+
+// A diffuse proposal past the diffuse bounce budget is discarded, so its
+// density is not part of the continuation estimator.
+inline __rtc_device float continuationPdf(
+    float pdf, float diffusePdf, bool isDiffuseBudgetSpent)
+{
+  return isDiffuseBudgetSpent ? max(pdf - diffusePdf, 0.f) : pdf;
 }
 
 inline __rtc_device bool hasEnvironment(
@@ -156,6 +165,8 @@ inline __rtc_device void bounce(const World::DD &world,
   const float epsilon = safe_eps(1e-4f, interaction.P);
   Random random(ray.rngSeed, std::bit_cast<uint32_t>(ray.tMax));
   bool canContinue = generation < MAX_PATH_DEPTH;
+  const bool isDiffuseBudgetSpent =
+      state.numDiffuseBounces >= MAX_DIFFUSE_BOUNCES;
   // Degenerate surfaces also lack a normal, so only the BSDF type identifies
   // a volume collision.
   const bool isPhaseFunction = bsdf.type == PackedBSDF::TYPE_HGPhase
@@ -178,8 +189,10 @@ inline __rtc_device void bounce(const World::DD &world,
           volume ? V : (dot(orientedGeometricNormal, light.direction) > 0.f ? orientedGeometricNormal : -orientedGeometricNormal);
       makeShadowRay(shadowRay,
           shadowState,
-          directLightContribution(incoming, e, light.radiance,
-                                  probability, light.environment && canContinue),
+          directLightContribution(incoming, e, light.radiance, probability,
+              light.environment && canContinue
+                  ? continuationPdf(e.pdf, e.diffusePdf, isDiffuseBudgetSpent)
+                  : 0.f),
           interaction.P + epsilon * offset,
           light.direction,
           light.distance * (1.f - 2.f * epsilon));
@@ -206,7 +219,7 @@ inline __rtc_device void bounce(const World::DD &world,
   if (s.event == ScatterResult::VOLUME_EVENT)
     state.numVolumeBounces = state.numVolumeBounces + 1;
   if (s.type == ScatterResult::DIFFUSE) {
-    if (state.numDiffuseBounces >= 1)
+    if (isDiffuseBudgetSpent)
       return;
     state.numDiffuseBounces = state.numDiffuseBounces + 1;
   }
@@ -219,7 +232,12 @@ inline __rtc_device void bounce(const World::DD &world,
     ray.isInMedium = !ray.isInMedium;
   state.throughput = incoming * s.weight;
   const float lightPdf = environmentProbability(world, renderer, ray.dir);
-  state.misWeight = s.delta ? 1.f : s.pdf / (s.pdf + lightPdf);
+  // Without a competing environment density the weight is irrelevant, and
+  // dividing by a fully diffuse density would not be finite.
+  state.misWeight = (s.delta || lightPdf == 0.f)
+      ? 1.f
+      : s.pdf / (continuationPdf(s.pdf, s.diffusePdf, isDiffuseBudgetSpent)
+            + lightPdf);
 }
 #endif
 

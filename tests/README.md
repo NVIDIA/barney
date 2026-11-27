@@ -17,14 +17,18 @@ The test checks direct and unoccluded continuation contributions against literal
 isotropic energies and independent double-precision per-direction references.
 It covers disabled scattering, zero/exhausted budgets, the last allowed volume
 and global bounces, the global depth limit (including a Lambertian surface),
+a Lambertian surface with a spent diffuse budget,
 SimplePhase and HG with positive/negative anisotropy, colored HDR throughput,
 emission, and ambient/directional/area/mixed/no-light cases. It also checks
 continuation validity, bounce counts, and that shadow MIS is applied only once.
+A rough dielectric surface checks that spending the diffuse bounce budget keeps
+the mean environment energy within Monte Carlo tolerance.
 
 There is no ray traversal or scene geometry: visibility is explicitly synthesized
 as an unoccluded miss. This regression does not test environment textures/CDFs,
-volume tracing, mixed-surface-lobe bounce limits, or final image appearance. The
-older optional packed-BSDF suite is independent and is not required by this test.
+volume tracing, indirect light lost to the diffuse bounce budget, or final image
+appearance. The older optional packed-BSDF suite is independent and is not
+required by this test.
 
 # Hit-time tangent tests
 

@@ -174,12 +174,12 @@ namespace BARNEY_NS {
                                                       const EvalRes &bsdf,
                                                       vec3f radiance,
                                                       float lightProbability,
-                                                      bool environment)
+                                                      float competingPdf)
     {
-      // Only environment lights have a competing BSDF estimator. Fold the
-      // balance weight into the denominator before forming an HDR contribution.
-      const float denominator = lightProbability + (environment ? bsdf.pdf : 0.f);
-      return incoming * (bsdf.value / denominator) * radiance;
+      // competingPdf folds MIS into the denominator: it is the density of
+      // the eligible continuation estimator, zero when there is none.
+      return incoming * (bsdf.value / (lightProbability + competingPdf))
+          * radiance;
     }
 
     inline __rtc_device

@@ -15,7 +15,7 @@ using namespace BARNEY_NS::native;
 namespace volume_lighting_test {
 constexpr double pi = 3.14159265358979323846;
 constexpr int samples = 256;
-enum Phase { HG, SIMPLE, SURFACE };
+enum Phase { HG, SIMPLE, SURFACE, MIXED_SURFACE };
 enum Lighting { AMBIENT, DIRECTIONAL, AREA, MIXED, NONE };
 
 struct Parameters
@@ -26,6 +26,7 @@ struct Parameters
   int multiScatter = 0;
   int maxBounces = 2;
   int volumeBounces = 0;
+  int diffuseBounces = 0;
   int generation = 0;
   bool emissive = false;
   vec3f incoming = vec3f(8,4,2);
@@ -80,6 +81,14 @@ __rtc_global void evaluate(const rtc::ComputeInterface &ci,
     packedBSDF::Lambertian matte;
     matte.albedo = rtc::float3(tint.x,tint.y,tint.z);
     ray.setHit(vec3f(0.f),vec3f(0,0,1),1.f,matte,vec3f(0,0,1));
+  } else if (p.phase == MIXED_SURFACE) {
+    packedBSDF::PhysicallyBased roughDielectric;
+    roughDielectric.setDefaults();
+    roughDielectric.baseColor = tint;
+    roughDielectric.metallic = 0.f;
+    roughDielectric.specular = 1.f;
+    roughDielectric.roughness = .5f;
+    ray.setHit(vec3f(0.f),vec3f(0,0,1),1.f,roughDielectric,vec3f(0,0,1));
   } else {
     ray.setVolumeHitWithEmission(vec3f(0.f),1.f,tint,p.g,1.f,
         p.emissive ? vec3f(.25f,.5f,1.f) : vec3f(0.f));
@@ -87,6 +96,7 @@ __rtc_global void evaluate(const rtc::ComputeInterface &ci,
   PathState state{}, shadowState{};
   state.throughput = p.incoming;
   state.numVolumeBounces = p.volumeBounces;
+  state.numDiffuseBounces = p.diffuseBounces;
   vec3f fragment(0.f);
   bounce(world,renderer,fragment,ray,state,shadow,shadowState,p.generation);
   Result r{};
@@ -172,7 +182,9 @@ void check(rtc::Device &device, Buffer &buffer,
   __rtc_launch((&device),evaluate,2,128,p,buffer.data());
   const auto results = buffer.read();
   bool continues = p.generation < MAX_PATH_DEPTH;
-  if (p.phase != SURFACE)
+  if (p.phase == SURFACE)
+    continues = continues && p.diffuseBounces < MAX_DIFFUSE_BOUNCES;
+  else
     continues = continues && p.multiScatter
         && p.volumeBounces < p.maxBounces;
 #if !BARNEY_USE_MULTI_SCATTERING
@@ -188,7 +200,8 @@ void check(rtc::Device &device, Buffer &buffer,
     require(bool(r.continuationValid) == continues,name+" continuation policy");
     require(r.volumeBounces == p.volumeBounces
         + int(continues && p.phase != SURFACE),name+" volume count");
-    require(r.diffuseBounces == int(continues && p.phase == SURFACE),
+    require(r.diffuseBounces
+        == p.diffuseBounces + int(continues && p.phase == SURFACE),
             name+" diffuse count");
     if (p.lighting == NONE)
       require(!r.shadowValid,name+" unexpected light");
@@ -241,6 +254,36 @@ void check(rtc::Device &device, Buffer &buffer,
             name+" both light-selection branches must be exercised");
   std::cout << name << ": PASS (" << samples << " production bounces)\n";
 }
+double meanEnvironmentEnergy(rtc::Device &device, Buffer &buffer, Parameters p)
+{
+  __rtc_launch((&device),evaluate,2,128,p,buffer.data());
+  double sum = 0.;
+  for (const auto &r : buffer.read())
+    sum += reduce_add(r.direct+r.continuation);
+  return sum/samples;
+}
+
+// Both estimates are unbiased for the same unoccluded environment integral;
+// the tolerance covers their Monte Carlo noise at 256 fixed-seed samples,
+// while losing the diffuse lobe's MIS share costs more than half the energy.
+constexpr double DIFFUSE_BUDGET_ENERGY_TOLERANCE = .15;
+
+void checkSpentDiffuseBudgetKeepsEnvironment(rtc::Device &device,
+                                             Buffer &buffer)
+{
+  Parameters p;
+  p.phase = MIXED_SURFACE;
+  const double withinBudget = meanEnvironmentEnergy(device,buffer,p);
+  p.diffuseBounces = MAX_DIFFUSE_BOUNCES;
+  const double budgetSpent = meanEnvironmentEnergy(device,buffer,p);
+  require(withinBudget > 0.
+      && std::abs(budgetSpent/withinBudget-1.)
+          <= DIFFUSE_BUDGET_ENERGY_TOLERANCE,
+      "mixed surface spent diffuse budget: energy="
+      +std::to_string(budgetSpent)+" expected="+std::to_string(withinBudget));
+  std::cout << "mixed surface spent diffuse budget: PASS (energy "
+            << budgetSpent << " vs " << withinBudget << ")\n";
+}
 } // namespace volume_lighting_test
 
 int main()
@@ -267,8 +310,11 @@ int main()
     check(device,buffer,"global depth limit",p);
     p.phase = SURFACE;
     check(device,buffer,"surface global depth limit",p);
+    p.generation = 0;
+    p.diffuseBounces = MAX_DIFFUSE_BOUNCES;
+    check(device,buffer,"surface spent diffuse budget",p);
     p = Parameters{};
-    int cases = 7;
+    int cases = 8;
     for (Phase phase : {HG,SIMPLE})
       for (float g : {0.f,.6f,-.6f}) {
         if (phase == SIMPLE && g != 0.f) continue;
@@ -295,7 +341,8 @@ int main()
     check(device,buffer,"emission with direct lighting",p);
     p.multiScatter = 1;
     check(device,buffer,"emission with continuation",p);
-    std::cout << "Volume lighting: PASS " << cases+4 << " cases\n";
+    checkSpentDiffuseBudgetKeepsEnvironment(device,buffer);
+    std::cout << "Volume lighting: PASS " << cases+5 << " cases\n";
     return 0;
   } catch (const std::exception &e) {
     std::cerr << "Volume lighting: FAIL: " << e.what() << '\n';
