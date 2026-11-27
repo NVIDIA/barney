@@ -62,7 +62,7 @@ These tests inspect the packed BSDF normals from actual hits, not persistent
 mesh-generated tangent arrays: mesh commit no longer creates those arrays.
 The `1e-3` normal tolerance accommodates half-precision BSDF storage. No images,
 lighting, path integration, performance or smooth tangent continuity across
-neighbouring faces are validated. GPU tests use allocation-local device 0;
+neighbouring faces are validated. GPU tests use device 0;
 HIP/HIPRT and MPI have not been verified.
 
 # Numerical packed-BSDF tests
@@ -76,23 +76,13 @@ normal-map construction, complete path integration, or final image appearance.
 
 ## Run
 
-Enable the optional suite in an existing backend build, then build and use
-CTest (from the source workspace):
+Enable `BARNEY_BUILD_BSDF_TESTS` in any backend build; the option does not
+change backend selection:
 
 ```sh
-# OptiX, existing multi-config build
-cmake -S . -B _out/_cmake -DBARNEY_BUILD_BSDF_TESTS=ON
-just build
-cmake --build _out/_cmake --config RelWithDebInfo --target bsdf_quality_optix
-ctest --test-dir _out/_cmake -C RelWithDebInfo -R '^bsdf_quality_' --output-on-failure
-
-# Existing CPU and native-CUDA builds; do not change their backend selection
-cmake -S . -B _out/cpu-tangents -DBARNEY_BUILD_BSDF_TESTS=ON
-cmake --build _out/cpu-tangents --target bsdf_quality_cpu
-ctest --test-dir _out/cpu-tangents -R '^bsdf_quality_' --output-on-failure
-cmake -S . -B _out/cuda-tangents -DBARNEY_BUILD_BSDF_TESTS=ON
-cmake --build _out/cuda-tangents --target bsdf_quality_cuda
-ctest --test-dir _out/cuda-tangents -R '^bsdf_quality_' --output-on-failure
+cmake -S . -B _out/bsdf -DBARNEY_BUILD_BSDF_TESTS=ON
+cmake --build _out/bsdf --parallel
+ctest --test-dir _out/bsdf -R '^bsdf_quality_' --output-on-failure
 ```
 
 For a differently named build directory, substitute its path. Each enabled
